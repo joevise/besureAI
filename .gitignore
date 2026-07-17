@@ -44,3 +44,9 @@ chroma/
 # Distribution
 *.whl
 *.tar.gz
+
+
+# Added by cargo
+
+/target
+target/
