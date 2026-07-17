@@ -64,7 +64,9 @@ besure export ctx_我的项目
 
 ## 技术栈
 
-Python 3.11+ · FastAPI · SQLite · ChromaDB · Typer · Markdown
+**Rust 核心**（ring · argon2 · rusqlite · clap · axum）+ **Python AI 引擎**（ChromaDB · embedding · LLM）+ **Tauri 桌面 APP**（React · Tailwind）
+
+生产级安全性 · 内存安全 · 端到端加密 · 跨平台单二进制
 
 ## 设计文档
 
@@ -72,7 +74,7 @@ Python 3.11+ · FastAPI · SQLite · ChromaDB · Typer · Markdown
 
 ## 项目状态
 
-🚧 **设计阶段** — MVP 开发即将启动
+🚧 **设计阶段** — 架构定稿（Rust + Python + Tauri），MVP 开发即将启动
 
 ## License
 

@@ -4,7 +4,7 @@
 
 > 貔貅，只进不出，象征记忆一旦存入，永不丢失。
 
-**本地部署 · CLI 优先 · 可 MCP · 可 Skill · 可插件调用 · 端到端加密**
+**Rust 引擎 · 本地部署 · 桌面 APP · 端到端加密 · 可 MCP · 可 Skill · 可插件调用**
 
 ---
 
@@ -399,45 +399,156 @@ Agent: → besure export ctx_brand2context --format zip
 
 ---
 
-## 十、技术栈
+## 十、技术栈与系统架构（Rust + Python 生产级）
 
-| 层 | 选择 | 理由 |
-|----|------|------|
-| **核心语言** | Python 3.11+ | 生态成熟，团队熟悉 |
-| **CLI 框架** | Typer (Click) | 标准选择，输出美观，自动补全 |
-| **后端** | FastAPI | 轻量，异步，团队熟悉 |
-| **存储** | SQLite（元数据） | 零配置，单文件，可移植 |
-| **文件格式** | Markdown + JSON frontmatter | 人可读，Git友好，可diff |
-| **向量库** | ChromaDB（嵌入式模式） | 无需独立进程，直接嵌入 |
-| **Embedding** | BGE-small-zh / text-embedding-3-small | 中文友好 / 兼容性好 |
-| **LLM 提取** | 可选，支持 MiniMax/OpenAI/本地模型 | 自动对话→结构化提取 |
-| **打包** | pip install + Docker + PyInstaller | 灵活部署 |
-| **Web UI** | Alpine.js + Tailwind（可选） | 极轻量，不需要构建工具 |
+### 设计原则：生产级安全性与性能，从一开始就上 Rust
+
+核心引擎用 **Rust** 实现加密、文件 I/O、SQLite 操作（性能最优先 + 内存安全），
+AI/向量相关能力用 **Python sidecar** 实现（生态无可替代）。
+终态打包为 **桌面 APP（Tauri）**，用户双击即用，无需安装任何依赖。
+
+### 三层架构
+
+```
+┌───────────────────────────────────────────────────┐
+│            Besure AI 桌面 APP (Tauri)              │
+│                                                   │
+│  ┌─────────────────────────────────────────────┐  │
+│  │          前端 UI (React + Tailwind)          │  │
+│  │   上下文管理 / 搜索 / 时间线 / 引用图 / 设置  │  │
+│  └───────────────────┬─────────────────────────┘  │
+│                      │ Tauri IPC (命令调用)        │
+│  ┌───────────────────▼─────────────────────────┐  │
+│  │          Rust 核心层 (Tauri 后端)             │  │
+│  │                                             │  │
+│  │  • AES-256-GCM 加密/解密（ring crate）       │  │
+│  │  • Argon2id 密钥派生（argon2 crate）         │  │
+│  │  • SQLite 操作（rusqlite）                   │  │
+│  │  • 文件 I/O + vault 管理                     │  │
+│  │  • CLI 引擎（clap）                          │  │
+│  │  • MCP Server（原生 Rust 实现）              │  │
+│  │  • REST API（axum）                          │  │
+│  └───────────────────┬─────────────────────────┘  │
+│                      │ sidecar (子进程)            │
+│  ┌───────────────────▼─────────────────────────┐  │
+│  │      Python AI 引擎 (PyInstaller 打包)       │  │
+│  │                                             │  │
+│  │  • ChromaDB（向量存储 + 语义检索）           │  │
+│  │  • Embedding 生成（BGE / OpenAI）            │  │
+│  │  • LLM 自动提取（MiniMax / OpenAI / 本地）   │  │
+│  │  • 通过 stdin/stdout JSON 协议与 Rust 通信   │  │
+│  └─────────────────────────────────────────────┘  │
+│                                                   │
+│  打包发布：                                        │
+│  ├── macOS:  .dmg / .app (Universal Binary)       │
+│  ├── Windows: .exe / .msi (x64 + ARM64)           │
+│  └── Linux:  .deb / .AppImage / .rpm              │
+│  用户不需要安装 Python / Rust — 全部内置            │
+└───────────────────────────────────────────────────┘
+```
+
+### 为什么 Rust + Python 双层
+
+| 维度 | Rust 层 | Python 层 |
+|------|---------|----------|
+| **职责** | 加密、存储、文件I/O、CLI、MCP、API | 向量检索、Embedding、LLM 调用 |
+| **性能** | 极快（原生编译，零开销抽象） | 够用（AI 推理瓶颈在模型不在语言） |
+| **安全** | 内存安全（无 buffer overflow） | 沙箱 sidecar（即使出问题不影响核心） |
+| **包大小** | 极小（静态编译，无运行时） | PyInstaller 打包 ~30MB |
+| **生态** | ring/argon2/rusqlite/axum/clap | ChromaDB/transformers/openai |
+
+**核心洞察**：加密和存储是安全命脉，用 Rust 保证不可攻破；AI 能力是功能扩展，用 Python 保证生态丰富。两者通过 JSON 协议 over stdin/stdout 通信，解耦干净。
+
+### 技术栈详情
+
+#### Rust 层（核心引擎）
+
+| 组件 | Crate | 说明 |
+|------|-------|------|
+| **加密** | `ring` / `aes-gcm` | AES-256-GCM 加密 |
+| **密钥派生** | `argon2` | Argon2id（抗GPU暴力破解）|
+| **数据库** | `rusqlite` | SQLite 绑定（编译进二进制）|
+| **CLI** | `clap` | 命令行解析，自动补全，帮助生成 |
+| **HTTP** | `axum` | REST API 服务器 |
+| **序列化** | `serde` / `serde_json` | JSON 序列化/反序列化 |
+| **文件锁** | `fs2` | 文件锁（防多实例冲突）|
+| **Tauri** | `tauri` | 桌面 APP 壳（终态）|
+
+#### Python 层（AI 引擎 sidecar）
+
+| 组件 | 包 | 说明 |
+|------|-----|------|
+| **向量库** | `chromadb` | 嵌入式向量存储 |
+| **Embedding** | `sentence-transformers` / `openai` | 本地或远程 embedding |
+| **LLM** | `openai` / `httpx` | MiniMax/OpenAI/本地模型调用 |
+| **打包** | `pyinstaller` | 打包为单二进制（sidecar） |
+
+#### 前端（桌面 APP UI）
+
+| 组件 | 选择 | 说明 |
+|------|------|------|
+| **框架** | React 18 | 生态最大，组件丰富 |
+| **样式** | Tailwind CSS | 快速开发，一致性好 |
+| **状态** | Zustand / Jotai | 轻量状态管理 |
+| **构建** | Vite | 极速 HMR |
+
+### 交付形态
+
+```
+Besure AI
+├── besure-core (Rust crate)     ← 核心引擎（加密+存储+CLI+API+MCP）
+├── besure-ai (Python pkg)       ← AI 引擎 sidecar（向量+LLM）
+├── besure-app (Tauri APP)       ← 桌面应用（前端+壳）
+└── besure-server (Docker)       ← 云端协作版（可选）
+```
+
+| 交付物 | 用户怎么拿到 | 目标用户 |
+|--------|------------|--------|
+| **桌面 APP** | GitHub Releases 下载 .dmg/.exe/.deb | 所有人（终态主力） |
+| **CLI 二进制** | `brew install besure` / `cargo install besure` | 开发者 |
+| **MCP Server** | 内置于 APP / 独立运行 | AI Agent 用户 |
+| **REST API** | `besure serve` | 第三方集成 |
+| **云端版** | SaaS 订阅 | 团队/企业 |
 
 ---
 
 ## 十一、部署模式
 
-### 1. 纯本地（默认）
+### 1. 桌面 APP（默认，终态主力）
 
 ```bash
-pip install besure-ai
-besure init
-# 开始用
-# 数据全部在 ~/.besure/ → 可 Git 管理
+# 下载 BesureAI.dmg (macOS) / BesureAI.exe (Windows) / BesureAI.AppImage (Linux)
+# 双击安装，打开即用
+# 数据全部在 ~/.besure/ → 加密存储
+# 内置 Python sidecar（用户无感）
 ```
 
-### 2. 本地服务 + 远程访问
+### 2. CLI 模式（开发者）
+
+```bash
+# macOS
+brew install besure-ai
+# 或 cargo install
+cargo install besure-ai
+
+# 或直接下载预编译二进制
+curl -L https://github.com/joevise/besureAI/releases/latest/download/besure-linux-x64 -o /usr/local/bin/besure
+
+besure init
+# 开始用
+```
+
+### 3. 本地服务 + 远程访问
 
 ```bash
 besure serve --port 7788
-# 起一个 FastAPI 服务
-# Web UI: localhost:7788
+# Rust axum 服务器
 # REST API: localhost:7788/api
 # MCP: localhost:7788/mcp
+# Web UI: localhost:7788（V2 阶段）
 ```
 
-### 3. 云端部署（团队协作）
+### 4. 云端部署（团队协作）
 
 ```bash
 docker run -d \
@@ -484,13 +595,31 @@ docker run -d \
 
 ## 十三、开发路线图
 
-| 阶段 | 交付物 | 时间 |
-|------|--------|------|
-| **MVP** | CLI 核心（init/create/switch/add/list/search/export）+ SQLite + Markdown | 2天 |
-| **V1** | + ChromaDB 向量检索 + MCP Server + 导出/导入 | +3天 |
-| **V2** | + 自动对话提取（接 LLM）+ REST API + 简易 Web UI | +5天 |
-| **V3** | + 云端部署 + 多用户 + Docker + 插件 SDK | +1-2周 |
-| **V4** | + VS Code 插件 + 浏览器插件 + 桌面客户端 | 后续 |
+| 阶段 | 交付物 | 用户体感 | 时间 |
+|------|--------|---------|------|
+| **MVP** | Rust 核心引擎：加密+SQLite+CLI（init/create/switch/add/list/export） | `besure init` 开始用，纯 CLI | 1周 |
+| **V1** | + Python sidecar：ChromaDB 向量检索 + MCP Server + 导出/导入 | `besure search` 语义搜索可用，AI Agent 可接入 | +1周 |
+| **V2** | + 桌面 APP（Tauri）：React UI + 完整可视化 | 双击打开，GUI 操作，所有人可用 | +2-3周 |
+| **V3** | + REST API + 自动对话提取（LLM）+ 云端同步 | 服务模式 + AI 自动记录进展 | +2周 |
+| **V4** | + 云端版（多用户协作）+ Docker + 插件 SDK | 团队协作 / SaaS | +1月 |
+| **V5** | + VS Code 插件 + 浏览器插件 + Raycast | 全生态覆盖 | 后续 |
+
+### MVP 聚焦（第一步只做这些）
+
+```
+besure init --encrypt          # 初始化 + 设置主密码
+besure create "项目名"         # 创建上下文
+besure switch ctx_xxx          # 切换
+besure add "进展内容"          # 记录
+besure list                    # 列表
+besure log                     # 时间线
+besure search "关键词"         # 搜索（先全文匹配，V1升向量）
+besure export ctx_xxx          # 导出
+besure unlock / besure lock    # 解锁/锁定
+besure status                  # 状态
+```
+
+全部用 Rust 实现，零 Python 依赖。加密、SQLite、CLI 三合一单二进制。
 
 ---
 
@@ -700,65 +829,89 @@ besure config set auto_lock_on_exit true  # CLI退出即锁
 - 云端模式可配置**服务级密码**或 **API Token 认证**
 - 多用户场景下每个用户有独立 vault + 独立密钥
 
-### 加密实现伪代码
+### 加密实现（Rust 核心层）
 
-```python
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import argon2
-import os
+加密引擎完全用 Rust 实现，保证内存安全和性能：
 
-class VaultCrypto:
-    """保险箱加密引擎"""
-    
-    def __init__(self, config_path="~/.besure/.besure.config"):
-        self.config = load_config(config_path)
-        self._key = None  # 密钥只在内存
-    
-    def derive_key(self, password: str) -> bytes:
-        """密码 → Argon2id → 256位密钥"""
-        return argon2.low_level.hash_secret_raw(
-            secret=password.encode(),
-            salt=self.config["salt"],
-            hash_len=32,
-            time_cost=3,
-            memory_cost=65536,
-            parallelism=4,
-            type=argon2.low_level.Type.ID
-        )
-    
-    def unlock(self, password: str) -> bool:
-        """解锁：验证密码并加载密钥到内存"""
-        key = self.derive_key(password)
-        # 用已知明文验证密码正确性
-        try:
-            self._decrypt_file("~/.besure/.verify", key)
-            self._key = key
-            return True
-        except InvalidTag:
-            return False
-    
-    def lock(self):
-        """锁定：从内存清除密钥"""
-        if self._key:
-            # 安全 overwrite
-            for i in range(len(self._key)):
-                self._key[i] = 0
-            self._key = None
-    
-    def encrypt_file(self, plaintext: bytes, path: str):
-        """加密并写入文件"""
-        nonce = os.urandom(12)  # 96-bit nonce
-        aesgcm = AESGCM(self._key)
-        ciphertext = aesgcm.encrypt(nonce, plaintext, None)
-        write_file(path + ".enc", nonce + ciphertext)
-    
-    def decrypt_file(self, path: str) -> bytes:
-        """读取并解密文件"""
-        data = read_file(path)
-        nonce, ciphertext = data[:12], data[12:]
-        aesgcm = AESGCM(self._key)
-        return aesgcm.decrypt(nonce, ciphertext, None)
+```rust
+use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, KeyInit}};
+use argon2::{Argon2, Algorithm, Version, Params};;
+use zeroize::Zeroize;
+
+/// 保险箱加密引擎
+pub struct VaultCrypto {
+    salt: Vec<u8>,
+    key: Option<[u8; 32]>,  // 密钥只在内存，Option<None> = 已锁定
+}
+
+impl VaultCrypto {
+    /// 密码 → Argon2id → 256位密钥
+    fn derive_key(password: &str, salt: &[u8]) -> [u8; 32] {
+        let params = Params::new(65536, 4, 3, Some(32))  // 64MB, 4线程, 3次迭代
+            .unwrap();
+        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+        let mut key = [0u8; 32];
+        argon2.hash_password_into(password.as_bytes(), salt, &mut key)
+            .expect("derive failed");
+        key
+    }
+
+    /// 解锁：验证密码并加载密钥到内存
+    pub fn unlock(&mut self, password: &str) -> bool {
+        let key = Self::derive_key(password, &self.salt);
+        // 用已知验证文件检查密码正确性
+        if self.verify_key(&key) {
+            self.key = Some(key);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 锁定：从内存安全清除密钥（zeroize）
+    pub fn lock(&mut self) {
+        if let Some(ref mut key) = self.key {
+            key.zeroize();  // Rust zeroize crate：防编译器优化跳过清除
+        }
+        self.key = None;
+    }
+
+    /// 加密文件（AES-256-GCM）
+    pub fn encrypt_file(&self, plaintext: &[u8], path: &str) -> Result<()> {
+        let key = self.key.expect("vault locked");
+        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+        let nonce = Nonce::from_slice(&rand::random::<[u8; 12]>());  // 96-bit
+        let ciphertext = cipher.encrypt(nonce, plaintext)?;
+        // 写入：nonce (12 bytes) + ciphertext
+        let mut file_data = nonce.to_vec();
+        file_data.extend_from_slice(&ciphertext);
+        std::fs::write(format!("{}.enc", path), file_data)?;
+        Ok(())
+    }
+
+    /// 解密文件
+    pub fn decrypt_file(&self, path: &str) -> Result<Vec<u8>> {
+        let key = self.key.expect("vault locked");
+        let file_data = std::fs::read(path)?;
+        let (nonce_bytes, ciphertext) = file_data.split_at(12);
+        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+        let plaintext = cipher.decrypt(Nonce::from_slice(nonce_bytes), ciphertext)?;
+        Ok(plaintext)
+    }
+}
+
+impl Drop for VaultCrypto {
+    fn drop(&mut self) {
+        self.lock();  // 析构时自动清除密钥（防忘记手动 lock）
+    }
+}
 ```
+
+**Rust 安全优势**：
+- `zeroize` crate：保证内存清除不被编译器优化跳过
+- `Drop` trait：对象销毁时自动清除密钥，防忘记手动 lock
+- 无 GC 延迟：密钥清除即时生效（Python GC 时机不可控）
+- 无 buffer overflow：Rust 所有权系统天然防止内存越界
 
 ### 安全设计原则总结
 
