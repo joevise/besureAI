@@ -4,7 +4,7 @@
 
 > 貔貅，只进不出，象征记忆一旦存入，永不丢失。
 
-**本地部署 · CLI 优先 · 可 MCP · 可 Skill · 可插件调用**
+**本地部署 · CLI 优先 · 可 MCP · 可 Skill · 可插件调用 · 端到端加密**
 
 ---
 
@@ -507,7 +507,270 @@ docker run -d \
 
 ---
 
-## 十五、项目信息
+## 十五、安全架构（端到端加密）
+
+### 威胁模型
+
+| 威胁 | 场景 | 严重度 |
+|------|------|--------|
+| **物理拿到设备** | 笔记本丢了/被偷，硬盘被挂载到另一台机器 | 🔴 最高 |
+| **恶意软件** | 木马程序扫描用户目录，窃取 .besure/ 文件 | 🔴 高 |
+| **云同步泄露** | 数据同步到 iCloud/Dropbox 被他人访问 | 🟡 中 |
+| **备份泄露** | 系统备份文件被他人恢复 | 🟡 中 |
+| **多用户共用机器** | 同台服务器上其他用户读 ~/.besure/ | 🟡 中 |
+
+### 双层加密架构（保险箱模式）
+
+```
+┌──────────────────────────────────────────────────┐
+│              用户视角                              │
+│                                                  │
+│  besure unlock  ←→  正常使用  ←→  besure lock     │
+│     ↓                    ↑              ↓        │
+│  输入主密码         内存中明文操作          加密落盘  │
+│                                                  │
+├──────────────────────────────────────────────────┤
+│              磁盘视角                              │
+│                                                  │
+│  ~/.besure/                                      │
+│  ├── besure.db.enc        ← 加密的 SQLite        │
+│  ├── vault/                                      │
+│  │   └── *.md.enc         ← 加密的 Markdown     │
+│  └── chroma/                                    │
+│      └── *.enc            ← 加密的向量数据        │
+│                                                  │
+│  拿走硬盘？看到的只是一堆 .enc 文件，无法解密      │
+└──────────────────────────────────────────────────┘
+```
+
+### 核心设计
+
+#### 1. 主密码（Master Password）
+
+```
+besure init --encrypt
+→ 设置主密码（二次确认）
+→ 密码经 Argon2 派生为 256 位加密密钥
+→ 密钥永远不落盘，只在内存中
+
+besure unlock
+→ 输入密码 → Argon2 派生密钥 → 解密索引 → 正常使用
+
+besure lock   (或 N 分钟无操作自动锁)
+→ 密钥从内存清除（主动 overwrite）→ 所有文件恢复加密状态
+```
+
+#### 2. 文件级加密（AES-256-GCM）
+
+每个文件独立加密：
+- SQLite 数据库整体加密
+- 每个 Markdown 文件独立加密
+- 文件名也可加密（Paranoia 模式）
+
+#### 3. 密钥派生（Argon2id）
+
+```python
+from argon2 import low_level
+
+# 用户密码 → Argon2id → 256位加密密钥
+key = argon2.hash_secret_raw(
+    secret=password.encode(),
+    salt=stored_salt,        # 存在配置里，不加密
+    hash_len=32,             # 256 bits
+    time_cost=3,             # 迭代次数
+    memory_cost=65536,       # 64MB（抗GPU暴力破解）
+    parallelism=4,
+    type=argon2.low_level.Type.ID  # Argon2id
+)
+# key 用于 AES-256-GCM 加解密
+```
+
+**为什么用 Argon2id**：
+- 抗 GPU/ASIC 暴力破解（内存硬函数）
+- 2015 年密码哈希竞赛冠军
+- 即使敌人拿到加密文件 + 盐，没有密码也破解不了
+- 64MB 内存消耗 × 3 次迭代 = 单次尝试成本极高
+
+### 加密后的存储结构
+
+```
+~/.besure/
+├── .besure.config         # 配置（不含敏感数据，不加密）
+│   ├── salt: "随机盐值"          # Argon2 盐（公开无妨）
+│   ├── encryption: true          # 是否启用加密
+│   ├── auto_lock_minutes: 5      # 自动锁定时间
+│   ├── kdf: "argon2id"           # 密钥派生函数
+│   └── security_level: "standard" # 安全等级
+│
+├── besure.db.enc          # 加密的 SQLite（整体加密）
+├── vault/
+│   ├── ctx_brand2context/
+│   │   ├── CONTEXT.md.enc       # 加密的
+│   │   ├── meta.json.enc        # 加密的
+│   │   └── entries/
+│   │       ├── 001.md.enc       # 加密的
+│   │       └── 002.md.enc       # 加密的
+│   └── ctx_aiguide/
+│   └── ...
+│
+└── chroma/
+    └── chroma-data.enc     # 加密的向量数据
+```
+
+### 方案选型
+
+| 方案 | 优点 | 缺点 | 推荐度 |
+|------|------|------|--------|
+| **SQLCipher + 文件加密** | SQLite 原生支持，成熟稳定 | 需要额外依赖 SQLCipher | ⭐⭐⭐⭐ |
+| **纯文件级 AES-256-GCM** ✅ | 无额外依赖，Python cryptography 库即可 | 需自己管理加密/解密逻辑 | ⭐⭐⭐⭐⭐ |
+| **age 加密（外部工具）** | 最现代，简单 | 外部依赖 | ⭐⭐⭐ |
+| **GPG** | 成熟 | 太重，用户体验差 | ⭐⭐ |
+
+**选择：纯文件级 AES-256-GCM**
+
+原因：
+- **零外部依赖**：Python `cryptography` 库即可，不需要编译 SQLCipher
+- **灵活**：每个 .md 文件独立加密，单文件损坏不影响其他
+- **可移植**：加密逻辑纯 Python，任何平台都能跑
+- **够安全**：AES-256-GCM 是军用级别，配合 Argon2id 密钥派生，暴力破解不现实
+
+### 关键安全特性
+
+| 特性 | 说明 |
+|------|------|
+| **密钥永不落盘** | 密码 → Argon2id → 密钥，只存在内存。关机/锁定后消失 |
+| **自动锁定** | N分钟无操作自动锁，密钥从内存清除（防恶意软件抓内存） |
+| **防暴力破解** | Argon2id（64MB内存消耗 + 3次迭代），GPU 暴力破解成本极高 |
+| **文件独立加密** | 每个 .md 独立加密，单文件泄露不影响其他 |
+| **导出控制** | `besure export` 时可选择加密或不加密，默认加密 |
+| **内存安全清除** | 密钥使用后主动 overwrite 内存（防内存dump） |
+| **完整性校验** | AES-256-GCM 自带认证标签，篡改即可检测 |
+
+### 安全等级可选
+
+```bash
+besure init
+→ Choose security level:
+  1. None      (明文存储，最快，开发/测试用)
+  2. Standard  (文件加密，主密码保护) ← 默认推荐
+  3. Paranoia  (加密 + 文件名混淆 + 内存锁定 + 防侧信道)
+```
+
+| 等级 | 加密 | 文件名 | 自动锁定 | 内存保护 |
+|------|------|--------|---------|---------|
+| None | ❌ | 明文 | ❌ | ❌ |
+| Standard | ✅ AES-256-GCM | 明文 | ✅ 5min | ✅ overwrite |
+| Paranoia | ✅ AES-256-GCM | 混淆 | ✅ 1min | ✅ overwrite + mlock |
+
+### CLI 安全命令
+
+```bash
+# 初始化时启用加密
+besure init --encrypt
+→ 设置主密码（二次确认）
+
+# 日常使用
+besure unlock                    # 解锁（输入密码）
+besure lock                      # 立即锁定
+besure status                    # 显示 🔒/🔓 状态
+
+# 修改密码
+besure password                  # 修改主密码（需旧密码验证）
+
+# 导出（安全分享）
+besure export ctx_xxx            # 默认加密导出（需设置分享密码）
+besure export ctx_xxx --no-encrypt  # 明文导出（会显示安全警告）
+
+# 自动锁定配置
+besure config set auto_lock_minutes 5   # 5分钟无操作自动锁
+besure config set auto_lock_on_exit true  # CLI退出即锁
+```
+
+### 对 MCP/API 接入的影响
+
+```
+外部 Agent → MCP → besure mcp
+                     ↓
+              检查：已解锁？
+              ├── 是 → 正常返回数据
+              └── 否 → 返回 "Vault locked. Run 'besure unlock' first."
+```
+
+- MCP Server 启动时需要先解锁，之后保持解锁状态直到锁定
+- 云端模式可配置**服务级密码**或 **API Token 认证**
+- 多用户场景下每个用户有独立 vault + 独立密钥
+
+### 加密实现伪代码
+
+```python
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import argon2
+import os
+
+class VaultCrypto:
+    """保险箱加密引擎"""
+    
+    def __init__(self, config_path="~/.besure/.besure.config"):
+        self.config = load_config(config_path)
+        self._key = None  # 密钥只在内存
+    
+    def derive_key(self, password: str) -> bytes:
+        """密码 → Argon2id → 256位密钥"""
+        return argon2.low_level.hash_secret_raw(
+            secret=password.encode(),
+            salt=self.config["salt"],
+            hash_len=32,
+            time_cost=3,
+            memory_cost=65536,
+            parallelism=4,
+            type=argon2.low_level.Type.ID
+        )
+    
+    def unlock(self, password: str) -> bool:
+        """解锁：验证密码并加载密钥到内存"""
+        key = self.derive_key(password)
+        # 用已知明文验证密码正确性
+        try:
+            self._decrypt_file("~/.besure/.verify", key)
+            self._key = key
+            return True
+        except InvalidTag:
+            return False
+    
+    def lock(self):
+        """锁定：从内存清除密钥"""
+        if self._key:
+            # 安全 overwrite
+            for i in range(len(self._key)):
+                self._key[i] = 0
+            self._key = None
+    
+    def encrypt_file(self, plaintext: bytes, path: str):
+        """加密并写入文件"""
+        nonce = os.urandom(12)  # 96-bit nonce
+        aesgcm = AESGCM(self._key)
+        ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+        write_file(path + ".enc", nonce + ciphertext)
+    
+    def decrypt_file(self, path: str) -> bytes:
+        """读取并解密文件"""
+        data = read_file(path)
+        nonce, ciphertext = data[:12], data[12:]
+        aesgcm = AESGCM(self._key)
+        return aesgcm.decrypt(nonce, ciphertext, None)
+```
+
+### 安全设计原则总结
+
+1. **密钥与数据分离** — 密钥永远只在内存，数据在磁盘，两者不同时暴露
+2. **每个文件独立加密** — 单点泄露不扩散，完整性可独立校验
+3. **密码不存储、不传输** — 只在用户大脑和瞬态内存中
+4. **默认安全** — 初始化默认推荐 Standard 加密级别
+5. **加密从 MVP 开始** — 后加加密等于重写存储层，不如一开始就做进去
+
+---
+
+## 十六、项目信息
 
 - **GitHub**: joevise/besureAI
 - **本地路径**: `/home/elttilz/joevise-projects/besure-ai/`
