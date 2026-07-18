@@ -1,136 +1,80 @@
-# 貔貅记忆 Besure AI
+# 🐉 Besure AI Context
 
-### Context Switch Memory System — 通用多上下文管理系统
+### Local-first context memory for AI agents and humans.
 
-> 貔貅，只进不出，象征记忆一旦存入，永不丢失。
+> 貔貅 (Píxiū), a mythical beast that only takes in and never loses — symbolizing memory that, once stored, is never forgotten.
 
-**Rust 引擎 · 本地部署 · 端到端加密 · CLI + MCP + REST API**
+**Rust-powered · Local-first · End-to-end encrypted · MCP-native · Single binary**
 
 ---
 
-## 安装
+## Why Besure AI Context?
 
-### 方式一：一键安装（推荐）
+You work on multiple projects. You switch between tasks. Every time you switch, you lose context — what you were doing, what you decided, what you learned. AI agents have the same problem.
+
+**Besure AI Context fixes this:**
+
+| Problem | Solution |
+|---------|----------|
+| 🔀 **Context loss** when switching projects | Git-branch-like context isolation — work on one, switch instantly |
+| 🤖 **AI agents can't remember** across sessions | Native MCP Server — Claude, Cursor, OpenClaw can store & retrieve context |
+| ☁️ **Cloud dependency & privacy concerns** | 100% local — SQLite + Markdown, zero cloud required |
+| 🔓 **Data security** | AES-256-GCM + Argon2id encryption — keys never touch disk |
+| 📦 **Setup complexity** | Single binary, zero runtime dependencies — `curl | bash` and you're done |
+
+---
+
+## Quick Start
+
+### Install
 
 ```bash
+# One-line install (macOS / Linux)
 curl -fsSL https://raw.githubusercontent.com/joevise/besureAI/main/install.sh | bash
-```
 
-### 方式二：从 Release 下载预编译二进制
-
-前往 [Releases](https://github.com/joevise/besureAI/releases) 下载对应平台的二进制文件。
-
-### 方式三：从源码编译
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # 安装 Rust（如果没有）
-git clone https://github.com/joevise/besureAI.git
-cd besureAI
-cargo install --path .
-```
-
-### 方式四：cargo install
-
-```bash
+# Or via cargo
 cargo install besure
+
+# Or download pre-built binary
+# → https://github.com/joevise/besureAI/releases
 ```
 
----
-
-## 快速开始
+### Use
 
 ```bash
-# 初始化（设置主密码，开启加密）
+# Initialize with encryption
 besure init --encrypt
 
-# 解锁
-besure unlock
+# Create your first context
+besure create "My Project" --tag rust --summary "Building something cool"
 
-# 创建第一个上下文
-besure create "我的项目" --tag rust --summary "项目摘要"
+# Record progress
+besure add "Implemented auth module" --type milestone
+besure add "Decided to use Axum" --type decision
+besure add "Hit a compile error, fixed" --type blocker
 
-# 记录进展
-besure add "完成了第一版设计" --type milestone
-besure add "决定用 Rust" --type decision
-besure add "遇到编译错误，已修" --type blocker
-
-# 查看所有上下文
+# List all contexts
 besure list
 
-# 查看时间线
-besure log
+# Search across everything
+besure search "auth"
 
-# 搜索
-besure search "关键词"
-besure search "意思相近的内容" --semantic   # 语义搜索（需配置 embedding API）
+# Switch between contexts (fuzzy match)
+besure switch "project"
 
-# 切换上下文
-besure switch "项目名"   # 支持模糊匹配
-
-# 导出
-besure export "项目名" -o project.md
-
-# 从对话自动提取进展
-echo "今天完成了MCP Server\n决定用axum做API" | besure absorb --auto
-
-# 锁定
-besure lock
+# Export a context to share
+besure export "My Project" -o project-context.md
 ```
 
 ---
 
-## 核心能力
+## Connect to AI Agents (MCP)
 
-| 能力 | 说明 |
-|------|------|
-| 🔒 端到端加密 | AES-256-GCM + Argon2id 密钥派生，密钥永不落盘 |
-| 🗂️ 多上下文管理 | 创建/切换/搜索，像 git branch 一样管理任务上下文 |
-| 🔍 语义搜索 | 内置向量检索，自然语言秒搜历史记录 |
-| 🤖 MCP Server | stdio JSON-RPC，Claude/OpenClaw/Cursor 可直接接入 |
-| 🌐 REST API | `besure serve` 启动 HTTP 服务，第三方可调用 |
-| 📝 Markdown | 人可读的 Markdown + JSON frontmatter 文件 |
-| 💾 本地优先 | SQLite + 文件，数据在你手里，离线可用 |
+Besure AI Context includes a native MCP (Model Context Protocol) server. Any MCP-compatible AI tool can store and retrieve context:
 
----
+### Claude Desktop / OpenClaw / Cursor
 
-## CLI 命令
-
-```
-besure init --encrypt       初始化 vault
-besure create <title>       创建上下文
-besure switch <query>       切换上下文（模糊匹配）
-besure add <content>        添加进展
-besure list                 列出所有上下文
-besure log                  查看时间线
-besure search <query>       搜索（全文/语义）
-besure export <context>     导出为 Markdown
-besure absorb               从对话提取进展
-besure unlock               解锁
-besure lock                 锁定
-besure status               查看状态
-besure serve --port 7788    启动 REST API
-besure mcp                  启动 MCP Server
-besure config set <k> <v>   配置管理
-```
-
-## 配置 Embedding API
-
-```bash
-# 配置 OpenAI embedding（用于语义搜索）
-besure config set embedding.provider openai
-besure config set embedding.api_url https://api.openai.com/v1/embeddings
-besure config set embedding.api_key sk-xxx
-besure config set embedding.model text-embedding-3-small
-
-# 或 MiniMax
-besure config set embedding.provider minimax
-besure config set embedding.api_url https://api.minimaxi.com/v1/embeddings
-besure config set embedding.api_key sk-xxx
-```
-
-## MCP Server 接入
-
-在 Claude Desktop / OpenClaw / Cursor 配置中添加：
+Add to your MCP config:
 
 ```json
 {
@@ -143,29 +87,148 @@ besure config set embedding.api_key sk-xxx
 }
 ```
 
-## 安全
-
-- AES-256-GCM 军用级加密
-- Argon2id 密钥派生（64MB 内存 / 3 次迭代 / 4 线程）
-- 密钥只存在内存，lock 时 zeroize 清除
-- 每个文件独立加密，单文件泄露不影响其他
-- 无任何云依赖，数据完全本地
+Now your AI agent can:
+- **List contexts** → see all your projects
+- **Add entries** → record decisions and progress
+- **Search memory** → find relevant past context
+- **Create contexts** → start new project memory
+- **Export & share** → hand off context to teammates
 
 ---
 
-## 技术栈
+## Web Dashboard
 
-纯 Rust，单二进制，零外部依赖：
+```bash
+besure serve --port 7788
+# → Open http://localhost:7788
+```
 
-| 组件 | Crate |
-|------|-------|
-| 加密 | aes-gcm + argon2 + zeroize |
-| 数据库 | rusqlite (bundled) |
-| CLI | clap |
-| HTTP | reqwest (rustls-tls) |
-| REST API | axum + tokio |
-| 序列化 | serde + serde_json |
+A built-in web UI for browsing contexts, viewing timelines, and managing entries. Password-protected with your master password.
+
+---
+
+## Security
+
+| Feature | Detail |
+|---------|--------|
+| **Encryption** | AES-256-GCM (military-grade, authenticated) |
+| **Key derivation** | Argon2id (64MB memory / 3 iterations / 4 threads — GPU-cracking resistant) |
+| **Key storage** | Keys exist only in memory, zeroized on lock — never written to disk |
+| **File-level encryption** | Each file encrypted independently — single file leak doesn't compromise others |
+| **Auth** | Dashboard requires master password — same key encrypts data and authorizes access |
+| **No cloud** | Zero network calls to external services. Your data never leaves your machine. |
+
+---
+
+## CLI Reference
+
+```
+besure init --encrypt         Initialize vault with encryption
+besure create <title>         Create a new context
+besure switch <query>         Switch context (fuzzy match)
+besure add <content>          Add an entry (--type: milestone/decision/progress/blocker/note)
+besure list                   List all contexts
+besure log [context]          View timeline
+besure search <query>         Full-text search (add --semantic for vector search)
+besure absorb [--auto]        Extract entries from conversation text (stdin or --from file)
+besure export <context>       Export to Markdown
+besure serve [--port 7788]    Start web dashboard + REST API
+besure mcp                    Start MCP server (stdio)
+besure unlock                 Unlock vault
+besure lock                   Lock vault
+besure status                 Show vault status
+besure config set <k> <v>     Configure embedding/LLM API
+```
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────┐
+│          Besure AI Context                │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │         Interface Layer            │  │
+│  │  CLI · MCP Server · REST API · Web │  │
+│  └──────────────┬─────────────────────┘  │
+│                 │                        │
+│  ┌──────────────▼─────────────────────┐  │
+│  │          Engine Layer              │  │
+│  │  Context Mgmt · Search · Absorb    │  │
+│  └──────────────┬─────────────────────┘  │
+│                 │                        │
+│  ┌──────────────▼─────────────────────┐  │
+│  │          Storage Layer             │  │
+│  │  SQLite · Markdown · Vector Store  │  │
+│  └────────────────────────────────────┘  │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │          Crypto Layer              │  │
+│  │  AES-256-GCM · Argon2id · Zeroize  │  │
+│  └────────────────────────────────────┘  │
+└──────────────────────────────────────────┘
+
+Single binary. Zero external dependencies. Pure Rust.
+```
+
+---
+
+## How It Compares
+
+| | Besure AI Context | Obsidian | Notion | Mem.ai |
+|---|---|---|---|---|
+| **AI Agent integration** | Native (MCP) | None | Limited | API only |
+| **Context isolation** | Built-in (git-branch model) | Manual | Workspaces | Tags |
+| **Deployment** | Local-first, single binary | Local app | Cloud-only | Cloud-only |
+| **Encryption** | E2E, AES-256-GCM | No | No | At-rest only |
+| **Language** | Rust | JS/TS | JS/TS | JS/TS |
+| **Open source** | ✅ MIT | ❌ | ❌ | ❌ |
+
+---
+
+## Roadmap
+
+| Phase | Status | Features |
+|-------|--------|----------|
+| **MVP** | ✅ Done | Crypto engine, SQLite, CLI, Markdown files |
+| **V1** | ✅ Done | Vector search, MCP server, Absorb, REST API |
+| **V2** | ✅ Done | Web Dashboard with auth, semantic search |
+| **V3** | 🚧 Next | Tauri desktop app, cross-device sync |
+| **V4** | 📋 Planned | Team collaboration, plugin SDK |
+| **V5** | 📋 Planned | VS Code extension, browser extension |
+
+---
+
+## Tech Stack
+
+| Component | Crate |
+|-----------|-------|
+| Encryption | `aes-gcm` + `argon2` + `zeroize` |
+| Database | `rusqlite` (SQLite bundled into binary) |
+| CLI | `clap` |
+| HTTP Client | `reqwest` (rustls-tls, no OpenSSL dependency) |
+| REST API | `axum` + `tokio` |
+| Serialization | `serde` + `serde_json` |
+
+**100% Rust. No Python runtime. No Node.js. No system libraries. One binary.**
+
+---
+
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+## Links
+
+- **GitHub**: [github.com/joevise/besureAI](https://github.com/joevise/besureAI)
+- **Releases**: [Download pre-built binaries](https://github.com/joevise/besureAI/releases)
+- **Design Doc**: [DESIGN.md](DESIGN.md) (Chinese, English translation coming soon)
+
+---
+
+*Besure AI Context — Once stored, never lost. 🐉*

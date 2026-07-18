@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -95,10 +95,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
   <div class="login-box">
     <div class="dragon">🐉</div>
     <h2>貔貅记忆 Besure AI</h2>
-    <div class="sub">请输入主密码以解锁 Dashboard</div>
-    <input type="password" id="loginPassword" placeholder="主密码" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="sub" data-zh="请输入主密码以Unlock Dashboard" data-en="Enter your master password to unlock">Enter your master password to unlock</div>
+    <input type="password" id="loginPassword" data-zh-ph="主密码" data-en-ph="Master password" placeholder="Master password" onkeydown="if(event.key==='Enter')doLogin()">
     <div class="err" id="loginErr"></div>
-    <button id="loginBtn" onclick="doLogin()">解锁</button>
+    <button id="loginBtn" onclick="doLogin()">Unlock</button>
   </div>
 </div>
 
@@ -109,26 +109,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
       <h1><span class="dragon">🐉</span> 貔貅记忆 <span class="ver">v0.2.0</span></h1>
     </div>
     <div class="sidebar-stats" id="stats">
-      <span>📋 <span id="ctxCount">0</span> 上下文</span>
-      <span>📝 <span id="entryCount">0</span> 记录</span>
+      <span>📋 <span id="ctxCount">0</span> <span data-zh="上下文" data-en="contexts">contexts</span></span>
+      <span>📝 <span id="entryCount">0</span> <span data-zh="记录" data-en="entries">entries</span></span>
     </div>
     <div class="search-box">
-      <input type="text" id="searchInput" placeholder="🔍 搜索..." oninput="handleSearch()">
+      <input type="text" id="searchInput" data-zh-ph="🔍 搜索..." data-en-ph="🔍 Search..." placeholder="🔍 Search..." oninput="handleSearch()">
     </div>
     <div class="ctx-list" id="ctxList"></div>
     <div class="sidebar-footer">
-      <button class="btn btn-primary" onclick="showCreateModal()">+ 新建</button>
-      <button class="btn" onclick="refresh()">↻ 刷新</button>
+      <button class="btn btn-primary" onclick="showCreateModal()">+ New</button>
+      <button class="btn" onclick="refresh()">↻ Refresh</button>
     </div>
   </div>
 
   <div class="main">
     <div class="topbar">
-      <span>🔒 加密保护中</span>
-      <span class="logout-btn" onclick="doLogout()">退出登录</span>
+      <span>🔒 Encrypted</span>
+      <span class="logout-btn" onclick="doLogout()">Logout</span>
     </div>
     <div id="mainContent">
-      <div class="empty"><div class="dragon">🐉</div><p>选择左侧上下文或创建新上下文</p></div>
+      <div class="empty"><div class="dragon">🐉</div><p>Select a context or create a new one</p></div>
     </div>
   </div>
 </div>
@@ -136,20 +136,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 <!-- Modals -->
 <div class="modal-overlay" id="createModal">
   <div class="modal">
-    <h3>创建新上下文</h3>
-    <div class="modal-field"><label>标题 *</label><input type="text" id="createTitle" placeholder="项目名称"></div>
-    <div class="modal-field"><label>标签（逗号分隔）</label><input type="text" id="createTags" placeholder="rust, mcp, saas"></div>
-    <div class="modal-field"><label>摘要</label><textarea id="createSummary" rows="2" placeholder="一句话描述"></textarea></div>
-    <div class="modal-actions"><button class="btn" onclick="hideModal('createModal')">取消</button><button class="btn btn-primary" onclick="doCreate()">创建</button></div>
+    <h3>Create New Context</h3>
+    <div class="modal-field"><label>Title *</label><input type="text" id="createTitle" placeholder="Project name"></div>
+    <div class="modal-field"><label>Tags (comma separated)</label><input type="text" id="createTags" placeholder="rust, mcp, saas"></div>
+    <div class="modal-field"><label>Summary</label><textarea id="createSummary" rows="2" placeholder="One-line description"></textarea></div>
+    <div class="modal-actions"><button class="btn" onclick="hideModal('createModal')">Cancel</button><button class="btn btn-primary" onclick="doCreate()">Create</button></div>
   </div>
 </div>
 
 <div class="modal-overlay" id="entryModal">
   <div class="modal">
-    <h3>添加进展</h3>
-    <div class="modal-field"><label>类型</label><select id="entryType"><option value="progress">进展</option><option value="milestone">里程碑</option><option value="decision">决策</option><option value="blocker">阻碍</option><option value="note">备注</option></select></div>
-    <div class="modal-field"><label>内容</label><textarea id="entryContent" rows="3" placeholder="做了什么 / 决定了什么 / 发现了什么"></textarea></div>
-    <div class="modal-actions"><button class="btn" onclick="hideModal('entryModal')">取消</button><button class="btn btn-primary" onclick="doAddEntry()">添加</button></div>
+    <h3>Add Entry</h3>
+    <div class="modal-field"><label>Type</label><select id="entryType"><option value="progress">Progress</option><option value="milestone">Milestone</option><option value="decision">Decision</option><option value="blocker">Blocker</option><option value="note">Note</option></select></div>
+    <div class="modal-field"><label>Content</label><textarea id="entryContent" rows="3" placeholder="What you did / decided / found"></textarea></div>
+    <div class="modal-actions"><button class="btn" onclick="hideModal('entryModal')">Cancel</button><button class="btn btn-primary" onclick="doAddEntry()">Add</button></div>
   </div>
 </div>
 
@@ -163,7 +163,7 @@ async function api(path, opts = {}) {
   if (SESSION_TOKEN) headers['Authorization'] = 'Bearer ' + SESSION_TOKEN;
   if (opts.body) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, {...opts, headers});
-  if (res.status === 401) { showLogin(); throw new Error('未认证'); }
+  if (res.status === 401) { showLogin(); throw new Error('Unauthorized'); }
   if (!res.ok) { const e = await res.json().catch(() => ({error: res.statusText})); throw new Error(e.error || 'Request failed'); }
   return res.json();
 }
@@ -187,10 +187,10 @@ async function doLogin() {
       hideLogin();
       refresh();
     } else {
-      document.getElementById('loginErr').textContent = data.error || '密码错误';
+      document.getElementById('loginErr').textContent = data.error || 'Wrong password';
     }
   } catch(e) {
-    document.getElementById('loginErr').textContent = '连接失败: ' + e.message;
+    document.getElementById('loginErr').textContent = 'Connection failed: ' + e.message;
   }
   document.getElementById('loginBtn').disabled = false;
 }
@@ -237,7 +237,7 @@ async function refresh() {
 
 function renderSidebar() {
   const list = document.getElementById('ctxList');
-  if (!contexts.length) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:13px;">还没有上下文<br>点击「新建」创建</div>'; return; }
+  if (!contexts.length) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:13px;">No contexts yet<br>点击「新建」Create</div>'; return; }
   list.innerHTML = contexts.map(ctx => `<div class="ctx-item ${currentCtx?.id===ctx.id?'active':''}" onclick="selectCtx('${ctx.id}')"><div class="title">${esc(ctx.title)}</div><div class="meta"><span class="status-badge ${ctx.status}">${ctx.status}</span>${(ctx.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>`).join('');
 }
 
@@ -255,8 +255,8 @@ async function selectCtx(id) {
 function renderDetail(ctx, entries) {
   const main = document.getElementById('mainContent');
   if (!ctx) { main.innerHTML = '<div class="empty"><div class="dragon">🐉</div><p>选择左侧上下文</p></div>'; return; }
-  let entriesHtml = entries.length ? entries.map(e => `<div class="entry"><div class="entry-icon ${e.entry_type}">${TYPE_ICONS[e.entry_type]||'📝'}</div><div class="entry-body"><div style="display:flex;justify-content:space-between;align-items:center;"><span class="entry-type ${e.entry_type}">${e.entry_type}</span><span class="entry-date">${esc(e.date)}</span></div><div class="entry-content">${esc(e.content)}</div></div></div>`).join('') : '<div style="padding:20px;color:var(--text2);">还没有记录</div>';
-  main.innerHTML = `<div class="main-header"><div><h2>${esc(ctx.title)}</h2><div class="subtitle">${ctx.id} · <span class="status-badge ${ctx.status}">${ctx.status}</span> ${ctx.tags?.length?' · '+ctx.tags.map(t=>'#'+esc(t)).join(' '):''} ${ctx.summary?' · '+esc(ctx.summary):''}</div></div><div class="main-actions"><button class="btn btn-primary btn-sm" onclick="showEntryModal()">+ 添加进展</button><button class="btn btn-sm" onclick="exportCtx('${ctx.id}')">导出</button></div></div><div class="timeline">${entriesHtml}</div>`;
+  let entriesHtml = entries.length ? entries.map(e => `<div class="entry"><div class="entry-icon ${e.entry_type}">${TYPE_ICONS[e.entry_type]||'📝'}</div><div class="entry-body"><div style="display:flex;justify-content:space-between;align-items:center;"><span class="entry-type ${e.entry_type}">${e.entry_type}</span><span class="entry-date">${esc(e.date)}</span></div><div class="entry-content">${esc(e.content)}</div></div></div>`).join('') : '<div style="padding:20px;color:var(--text2);">No entries yet</div>';
+  main.innerHTML = `<div class="main-header"><div><h2>${esc(ctx.title)}</h2><div class="subtitle">${ctx.id} · <span class="status-badge ${ctx.status}">${ctx.status}</span> ${ctx.tags?.length?' · '+ctx.tags.map(t=>'#'+esc(t)).join(' '):''} ${ctx.summary?' · '+esc(ctx.summary):''}</div></div><div class="main-actions"><button class="btn btn-primary btn-sm" onclick="showEntryModal()">+ Add Entry</button><button class="btn btn-sm" onclick="exportCtx('${ctx.id}')">导出</button></div></div><div class="timeline">${entriesHtml}</div>`;
 }
 
 let searchTimer = null;
@@ -278,13 +278,13 @@ async function doSearch(q) {
 }
 
 function showCreateModal() { showModal('createModal'); }
-function showEntryModal() { if (!currentCtx) { alert('请先选择一个上下文'); return; } showModal('entryModal'); }
+function showEntryModal() { if (!currentCtx) { alert('Please select a context first'); return; } showModal('entryModal'); }
 function showModal(id) { document.getElementById(id).classList.add('show'); }
 function hideModal(id) { document.getElementById(id).classList.remove('show'); }
 
 async function doCreate() {
   const title = document.getElementById('createTitle').value.trim();
-  if (!title) { alert('请输入标题'); return; }
+  if (!title) { alert('Please enter a title'); return; }
   const tags = document.getElementById('createTags').value.split(',').map(s=>s.trim()).filter(Boolean);
   const summary = document.getElementById('createSummary').value.trim();
   try {
@@ -292,12 +292,12 @@ async function doCreate() {
     hideModal('createModal');
     document.getElementById('createTitle').value=''; document.getElementById('createTags').value=''; document.getElementById('createSummary').value='';
     await refresh();
-  } catch(e) { alert('创建失败: '+e.message); }
+  } catch(e) { alert('Create失败: '+e.message); }
 }
 
 async function doAddEntry() {
   const content = document.getElementById('entryContent').value.trim();
-  if (!content) { alert('请输入内容'); return; }
+  if (!content) { alert('请输入Content'); return; }
   const entry_type = document.getElementById('entryType').value;
   try {
     await api(`/api/contexts/${currentCtx.id}/entries`, {method:'POST',body:JSON.stringify({content,entry_type})});
@@ -305,7 +305,7 @@ async function doAddEntry() {
     document.getElementById('entryContent').value='';
     await selectCtx(currentCtx.id);
     refresh();
-  } catch(e) { alert('添加失败: '+e.message); }
+  } catch(e) { alert('Add失败: '+e.message); }
 }
 
 function exportCtx(id) { window.open(`/api/contexts/${id}/export`, '_blank'); }
