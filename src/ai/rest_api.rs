@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::storage::{Vault, Context, Entry};
+use crate::dashboard::DASHBOARD_HTML;
 
 /// REST API Server (axum)
 pub struct ApiServer {
@@ -63,6 +64,9 @@ impl ApiServer {
         };
 
         let app = Router::new()
+            // Dashboard UI
+            .route("/", get(dashboard))
+            .route("/index.html", get(dashboard))
             // 健康检查
             .route("/api/health", get(health))
             // 上下文 CRUD
@@ -71,6 +75,7 @@ impl ApiServer {
             .route("/api/contexts/:id", get(get_context))
             .route("/api/contexts/:id/entries", post(add_entry))
             .route("/api/contexts/:id/log", get(get_log))
+            .route("/api/contexts/:id/export", get(export_context))
             // 搜索
             .route("/api/search", get(search))
             // 状态
@@ -92,6 +97,10 @@ fn open_vault(state: &AppState) -> Result<Vault, (StatusCode, String)> {
 fn open_db(vault: &Vault) -> Result<crate::storage::db::Database, (StatusCode, String)> {
     vault.database()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn dashboard() -> axum::response::Html<&'static str> {
+    axum::response::Html(DASHBOARD_HTML)
 }
 
 async fn health() -> Json<ApiResponse<&'static str>> {
@@ -211,4 +220,33 @@ async fn status(
     });
 
     Ok(Json(ApiResponse { ok: true, data: Some(data), error: None }))
+}
+
+async fn export_context(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<axum::response::Response<String>, (StatusCode, String)> {
+    let vault = open_vault(&state)?;
+    let db = open_db(&vault)?;
+    let ctx = db.get_context(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, format!("context '{}' not found", id)))?;
+    let entries = db.list_entries(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut md = format!("# {}\n\n", ctx.title);
+    if !ctx.summary.is_empty() {
+        md.push_str(&format!("## 背景\n{}\n\n", ctx.summary));
+    }
+    md.push_str(&format!("## 当前状态\n- 状态: {}\n- 创建: {}\n- 更新: {}\n\n", ctx.status, ctx.created, ctx.updated));
+    md.push_str("## 进展时间线\n\n");
+    for entry in entries.iter().rev() {
+        md.push_str(&format!("### {} ({})\n{}\n\n", entry.date, entry.entry_type, entry.content));
+    }
+    md.push_str("---\n*Exported from Besure AI — 貔貅记忆*\n");
+
+    Ok(axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/markdown; charset=utf-8")
+        .header("Content-Disposition", format!("attachment; filename=\"{}.md\"", ctx.id))
+        .body(md)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?)
 }

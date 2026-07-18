@@ -1,6 +1,7 @@
 mod crypto;
 mod storage;
 mod ai;
+mod dashboard;
 mod cli;
 
 use clap::{ArgAction, Parser, Subcommand};
