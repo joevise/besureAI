@@ -1,6 +1,6 @@
 [package]
 name = "besure"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "貔貅记忆 Besure AI — Context Switch Memory System"
 license = "MIT"
@@ -39,6 +39,13 @@ fs2 = "0.4"
 
 # 路径
 dirs = "5.0"
+
+# HTTP 客户端（embedding API / LLM API）
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+
+# REST API 服务器
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
 
 [profile.release]
 opt-level = 3

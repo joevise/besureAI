@@ -2,6 +2,7 @@ use anyhow::{bail, Context as AnyhowContext, Result};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use crate::ai::{EmbeddingProvider, embedding::EmbeddingConfig, Absorber, absorb::LlmConfig, VectorStore};
 use crate::storage::{Vault, Context, Entry};
 
 fn read_password(prompt: &str) -> Result<String> {
@@ -242,7 +243,8 @@ pub fn cmd_log_from_args(context: Option<&str>) -> Result<()> {
 }
 
 // === search ===
-pub fn cmd_search_from_args(query: &str) -> Result<()> {
+pub fn cmd_search_from_args(query: &str, semantic: bool) -> Result<()> {
+    if semantic { return do_semantic_search(query); }
     let vault = get_unlocked_vault()?;
     let db = vault.database()?;
 
@@ -382,5 +384,131 @@ pub fn cmd_status() -> Result<()> {
         println!("\nNo active context. Run 'besure create' or 'besure switch'.");
     }
 
+    Ok(())
+}
+
+// === absorb ===
+pub fn cmd_absorb_from_args(from: Option<&str>, auto: bool) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let config = load_config()?;
+    let absorber = Absorber::new(config.llm);
+
+    let entries = if let Some(path) = from {
+        absorber.absorb_file(std::path::Path::new(path))?
+    } else {
+        absorber.absorb_stdin()?
+    };
+
+    if entries.is_empty() {
+        println!("未提取到进展记录。");
+        return Ok(());
+    }
+
+    println!("提取到 {} 条进展：\n", entries.len());
+    for (i, entry) in entries.iter().enumerate() {
+        println!("  [{}] ({}) {}", i + 1, entry.entry_type, entry.content);
+    }
+
+    if auto {
+        let context_id = vault.current_context.as_ref().context("No active context")?;
+        let db = vault.database()?;
+        for entry in &entries {
+            let e = Entry::new(context_id, &entry.content, &entry.entry_type);
+            db.add_entry(&e)?;
+            vault.write_entry_md(&e)?;
+        }
+        println!("\n✓ 已自动添加 {} 条到 {}", entries.len(), context_id);
+    } else {
+        println!("\n使用 --auto 自动添加到当前上下文");
+    }
+    Ok(())
+}
+
+// === config ===
+pub fn cmd_config_set(key: &str, value: &str) -> Result<()> {
+    let mut config = load_config()?;
+    match key {
+        "embedding.provider" => config.embedding.provider = value.to_string(),
+        "embedding.api_url" => config.embedding.api_url = value.to_string(),
+        "embedding.api_key" => config.embedding.api_key = value.to_string(),
+        "embedding.model" => config.embedding.model = value.to_string(),
+        "llm.provider" => config.llm.provider = value.to_string(),
+        "llm.api_url" => config.llm.api_url = value.to_string(),
+        "llm.api_key" => config.llm.api_key = value.to_string(),
+        "llm.model" => config.llm.model = value.to_string(),
+        "auto_lock_minutes" => config.auto_lock_minutes = value.parse().context("invalid number")?,
+        _ => bail!("unknown config key: {}", key),
+    }
+    save_config(&config)?;
+    println!("✓ {} = {}", key, value);
+    Ok(())
+}
+
+// === semantic search ===
+fn do_semantic_search(query: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let config = load_config()?;
+    let provider = EmbeddingProvider::new(config.embedding);
+    let query_vec = provider.embed(query)?;
+
+    let vec_db_path = vault.root.join("vectors.db");
+    if !vec_db_path.exists() {
+        bail!("No vectors indexed yet. Run 'besure index' to build the index.");
+    }
+
+    let store = VectorStore::open(&vec_db_path)?;
+    let results = store.search(&query_vec, 10)?;
+
+    if results.is_empty() {
+        println!("No results for '{}'.", query);
+        return Ok(());
+    }
+
+    println!("Semantic search results for \"{}\":\n", query);
+    for (i, r) in results.iter().enumerate() {
+        println!("  [{}] {:.2} | {} | {}", i + 1, r.score, r.context_id, truncate(&r.chunk_text, 50));
+    }
+    Ok(())
+}
+
+// === config helpers ===
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct AppConfig {
+    #[serde(default)]
+    embedding: EmbeddingConfig,
+    #[serde(default)]
+    llm: LlmConfig,
+    #[serde(default = "default_auto_lock")]
+    auto_lock_minutes: u32,
+}
+
+fn default_auto_lock() -> u32 { 5 }
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            embedding: EmbeddingConfig::default(),
+            llm: LlmConfig::default(),
+            auto_lock_minutes: 5,
+        }
+    }
+}
+
+fn load_config() -> Result<AppConfig> {
+    let path = Vault::default_root().join("appconfig.json");
+    if path.exists() {
+        let json = std::fs::read_to_string(&path)?;
+        Ok(serde_json::from_str(&json).unwrap_or_default())
+    } else {
+        Ok(AppConfig::default())
+    }
+}
+
+fn save_config(config: &AppConfig) -> Result<()> {
+    let path = Vault::default_root().join("appconfig.json");
+    std::fs::create_dir_all(path.parent().unwrap())?;
+    let json = serde_json::to_string_pretty(config)?;
+    std::fs::write(&path, json)?;
     Ok(())
 }
