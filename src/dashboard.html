@@ -2,133 +2,332 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>貔貅记忆 Besure AI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title> Besure AI Context</title>
 <style>
-:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#232733;--border:#2e3340;--text:#e4e6eb;--text2:#9ca3af;--accent:#6366f1;--accent2:#818cf8;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--radius:10px}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden}
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#0a0a0a;
+  --surface:#141414;
+  --surface2:#1c1c1c;
+  --surface3:#262626;
+  --border:#2e2e2e;
+  --border2:#3a3a3a;
+  --text:#f0f0f0;
+  --text2:#8a8a8a;
+  --text3:#5a5a5a;
+  --accent:#ff7a1a;
+  --accent-dim:rgba(255,122,26,0.12);
+  --accent-glow:rgba(255,122,26,0.4);
+  --green:#34d399;
+  --red:#f87171;
+  --radius:14px;
+  --font:'Space Grotesk',-apple-system,'PingFang SC','Noto Sans SC',sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 
 /* === Login === */
-.login-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200}
-.login-box{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:40px;width:380px;text-align:center}
-.login-box .dragon{font-size:48px;margin-bottom:8px}
-.login-box h2{font-size:20px;font-weight:700;margin-bottom:4px}
-.login-box .sub{font-size:13px;color:var(--text2);margin-bottom:24px}
-.login-box input{width:100%;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:15px;outline:none;margin-bottom:12px}
-.login-box input:focus{border-color:var(--accent)}
-.login-box .err{color:var(--red);font-size:12px;margin-bottom:8px;min-height:16px}
-.login-box button{width:100%;padding:12px;background:var(--accent);border:none;border-radius:10px;color:white;font-size:15px;font-weight:600;cursor:pointer}
-.login-box button:hover{background:var(--accent2)}
+.login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200}
+.login-overlay::before{content:'';position:absolute;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(255,122,26,0.06) 0%,transparent 70%);animation:pulse 4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.1)}}
+.login-box{position:relative;z-index:1;text-align:center;width:340px;padding:40px}
+.login-box .logo{font-size:56px;margin-bottom:12px;animation:fadeUp .6s ease}
+.login-box h2{font-size:22px;font-weight:700;letter-spacing:-0.02em;animation:fadeUp .6s ease .1s both}
+.login-box .sub{font-size:13px;color:var(--text2);margin-bottom:28px;animation:fadeUp .6s ease .2s both}
+.login-box input{
+  width:100%;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);
+  border-radius:12px;color:var(--text);font-size:15px;outline:none;margin-bottom:10px;
+  font-family:var(--font);animation:fadeUp .6s ease .3s both;
+  transition:border-color .2s;
+}
+.login-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.login-box .err{color:var(--red);font-size:12px;min-height:18px;margin-bottom:6px}
+.login-box button{
+  width:100%;padding:14px;background:var(--accent);border:none;border-radius:12px;
+  color:#fff;font-size:15px;font-weight:600;cursor:pointer;font-family:var(--font);
+  animation:fadeUp .6s ease .4s both;transition:transform .15s,box-shadow .2s;
+}
+.login-box button:hover{box-shadow:0 8px 24px var(--accent-glow)}
+.login-box button:active{transform:scale(0.98)}
 .login-box button:disabled{opacity:0.5}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* === App Layout === */
+#mainApp{display:none;width:100%;height:100%}
+#mainApp.show{display:flex}
+
+/* Desktop: sidebar + main */
+@media(min-width:769px){
+  #mainApp{flex-direction:row}
+  .sidebar{width:300px;min-width:300px;max-width:300px}
+  .mobile-tabbar{display:none}
+  .main-area{flex:1}
+}
+
+/* Mobile: stacked with bottom tabbar */
+@media(max-width:768px){
+  #mainApp{flex-direction:column}
+  .sidebar{
+    width:100%;max-width:100%;
+    display:none;
+  }
+  .sidebar.mobile-show{display:flex;flex:1}
+  .main-area{
+    flex:1;display:none;
+  }
+  .main-area.mobile-show{display:flex}
+  .mobile-tabbar{
+    display:flex;
+  }
+}
 
 /* === Sidebar === */
-.sidebar{width:280px;min-width:280px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
-.sidebar-header{padding:20px 16px 12px;border-bottom:1px solid var(--border)}
-.sidebar-header h1{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
-.sidebar-header .dragon{font-size:20px}
-.sidebar-header .ver{font-size:11px;color:var(--text2);font-weight:400}
-.sidebar-stats{padding:8px 16px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);display:flex;gap:12px}
-.search-box{padding:12px 16px;border-bottom:1px solid var(--border)}
-.search-box input{width:100%;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none}
+.sidebar{
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.sidebar-header{
+  padding:20px 18px 14px;
+  border-bottom:1px solid var(--border);
+}
+.sidebar-header h1{
+  font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;
+}
+.sidebar-header .ver{
+  font-size:10px;color:var(--accent);font-weight:600;
+  background:var(--accent-dim);padding:2px 8px;border-radius:6px;
+}
+.sidebar-stats{
+  padding:10px 18px;font-size:12px;color:var(--text2);
+  border-bottom:1px solid var(--border);display:flex;gap:16px;
+}
+.sidebar-stats b{color:var(--accent);font-weight:600}
+.search-box{padding:12px 14px;border-bottom:1px solid var(--border)}
+.search-box input{
+  width:100%;padding:9px 12px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:10px;color:var(--text);
+  font-size:13px;outline:none;font-family:var(--font);
+  transition:border-color .2s;
+}
 .search-box input:focus{border-color:var(--accent)}
 .ctx-list{flex:1;overflow-y:auto;padding:8px}
-.ctx-item{padding:10px 12px;border-radius:var(--radius);cursor:pointer;margin-bottom:4px;transition:background .15s;display:flex;flex-direction:column;gap:2px}
+.ctx-item{
+  padding:12px 14px;border-radius:12px;cursor:pointer;
+  margin-bottom:4px;transition:background .15s,border-color .15s;
+  border:1px solid transparent;
+}
 .ctx-item:hover{background:var(--surface2)}
-.ctx-item.active{background:var(--surface2);border-left:3px solid var(--accent);padding-left:9px}
-.ctx-item .title{font-size:14px;font-weight:500}
-.ctx-item .meta{font-size:11px;color:var(--text2);display:flex;gap:8px;align-items:center}
-.ctx-item .tag{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--surface2);color:var(--text2)}
-.status-badge{font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600}
-.status-badge.active{background:rgba(16,185,129,.15);color:var(--green)}
-.status-badge.paused{background:rgba(245,158,11,.15);color:var(--amber)}
-.status-badge.completed{background:rgba(99,102,241,.15);color:var(--accent2)}
-.status-badge.archived{background:rgba(156,163,175,.15);color:var(--text2)}
-.sidebar-footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px}
-.btn{padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;transition:all .15s}
-.btn:hover{border-color:var(--accent)}
-.btn-primary{background:var(--accent);border-color:var(--accent);color:white}
-.btn-primary:hover{background:var(--accent2)}
-.btn-sm{padding:4px 10px;font-size:12px}
+.ctx-item.active{
+  background:var(--surface2);border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent-dim);
+}
+.ctx-item .title{font-size:14px;font-weight:500;margin-bottom:4px}
+.ctx-item .meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tag{
+  font-size:10px;padding:2px 8px;border-radius:6px;
+  background:var(--surface3);color:var(--text2);
+}
+.status-badge{
+  font-size:9px;padding:2px 7px;border-radius:5px;font-weight:600;
+  text-transform:uppercase;letter-spacing:0.04em;
+}
+.status-badge.active{background:rgba(52,211,153,0.12);color:var(--green)}
+.status-badge.paused{background:rgba(255,122,26,0.12);color:var(--accent)}
+.status-badge.completed{background:rgba(138,138,138,0.15);color:var(--text2)}
+.sidebar-footer{
+  padding:12px 14px;border-top:1px solid var(--border);
+  display:flex;gap:8px;
+}
 
-/* === Main === */
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.main-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start}
-.main-header h2{font-size:20px;font-weight:700}
-.main-header .subtitle{font-size:13px;color:var(--text2);margin-top:4px}
-.main-actions{display:flex;gap:8px}
-.timeline{flex:1;overflow-y:auto;padding:20px 24px}
-.entry{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;display:flex;gap:14px;align-items:flex-start}
-.entry-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
-.entry-icon.milestone{background:rgba(16,185,129,.15)}.entry-icon.decision{background:rgba(99,102,241,.15)}.entry-icon.progress{background:rgba(56,189,248,.15)}.entry-icon.blocker{background:rgba(239,68,68,.15)}.entry-icon.note{background:rgba(245,158,11,.15)}.entry-icon.init{background:rgba(156,163,175,.15)}
-.entry-body{flex:1}
-.entry-type{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
-.entry-type.milestone{color:var(--green)}.entry-type.decision{color:var(--accent2)}.entry-type.progress{color:#38bdf8}.entry-type.blocker{color:var(--red)}.entry-type.note{color:var(--amber)}.entry-type.init{color:var(--text2)}
-.entry-date{font-size:11px;color:var(--text2)}
-.entry-content{font-size:14px;line-height:1.6;margin-top:6px}
+/* === Buttons === */
+.btn{
+  padding:9px 16px;border:1px solid var(--border2);border-radius:10px;
+  background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;
+  font-family:var(--font);transition:all .15s;white-space:nowrap;
+}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:#ff8a3a;color:#fff;box-shadow:0 4px 16px var(--accent-glow)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--text2)}
+.btn-ghost:hover{color:var(--accent)}
 
-.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text2);gap:12px}
-.empty .dragon{font-size:48px}
+/* === Main Area === */
+.main-area{display:flex;flex-direction:column;overflow:hidden}
+.topbar{
+  padding:10px 20px;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:12px;color:var(--text2);flex-shrink:0;
+}
+.topbar .lock{display:flex;gap:6px;align-items:center}
 
-.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:100}
+/* === Detail === */
+.detail-header{
+  padding:20px 24px 16px;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+}
+.detail-header h2{font-size:22px;font-weight:700;letter-spacing:-0.02em}
+.detail-header .subtitle{font-size:12px;color:var(--text2);margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.detail-header .id-badge{
+  font-family:var(--mono);font-size:11px;
+  background:var(--surface2);padding:2px 8px;border-radius:6px;color:var(--text3);
+}
+
+/* === Timeline === */
+.timeline{flex:1;overflow-y:auto;padding:20px 24px 80px}
+.entry{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:0;margin-bottom:10px;
+  display:flex;transition:border-color .15s;
+}
+.entry:hover{border-color:var(--border2)}
+.entry-bar{width:3px;flex-shrink:0;border-radius:var(--radius) 0 0 var(--radius)}
+.entry-bar.milestone{background:var(--green)}
+.entry-bar.decision{background:var(--accent)}
+.entry-bar.progress{background:#60a5fa}
+.entry-bar.blocker{background:var(--red)}
+.entry-bar.note{background:var(--text3)}
+.entry-bar.init{background:var(--text3)}
+.entry-body{padding:14px 16px;flex:1}
+.entry-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.entry-type{
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+}
+.entry-type.milestone{color:var(--green)}
+.entry-type.decision{color:var(--accent)}
+.entry-type.progress{color:#60a5fa}
+.entry-type.blocker{color:var(--red)}
+.entry-type.note{color:var(--text2)}
+.entry-type.init{color:var(--text2)}
+.entry-date{font-size:11px;color:var(--text3);font-family:var(--mono)}
+.entry-content{font-size:14px;line-height:1.65;color:var(--text)}
+
+/* === Empty === */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text3);gap:12px}
+.empty .logo{font-size:56px;opacity:0.3}
+
+/* === Modal === */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.6);
+  backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:100;
+}
 .modal-overlay.show{display:flex}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:440px;max-width:90vw}
-.modal h3{font-size:18px;margin-bottom:16px}
-.modal-field{margin-bottom:14px}
-.modal-field label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
-.modal-field input,.modal-field textarea,.modal-field select{width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;font-family:inherit;resize:vertical}
+.modal{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:20px;padding:28px;width:460px;max-width:92vw;
+}
+.modal h3{font-size:18px;font-weight:700;margin-bottom:20px}
+.modal-field{margin-bottom:16px}
+.modal-field label{font-size:12px;color:var(--text2);display:block;margin-bottom:5px;font-weight:500}
+.modal-field input,.modal-field textarea,.modal-field select{
+  width:100%;padding:11px 14px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:10px;color:var(--text);
+  font-size:14px;outline:none;font-family:var(--font);resize:vertical;
+  transition:border-color .2s;
+}
 .modal-field input:focus,.modal-field textarea:focus,.modal-field select:focus{border-color:var(--accent)}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 
-.topbar{padding:8px 24px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text2)}
-.topbar .lock-info{display:flex;gap:8px;align-items:center}
-.logout-btn{color:var(--text2);cursor:pointer;font-size:12px;text-decoration:underline}
-.logout-btn:hover{color:var(--red)}
+/* === Mobile Tabbar === */
+.mobile-tabbar{
+  display:none;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding:8px 0 env(safe-area-inset-bottom,8px);
+  justify-content:space-around;flex-shrink:0;
+}
+.mobile-tabbar .tab{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-size:10px;color:var(--text3);cursor:pointer;padding:6px 16px;
+  transition:color .15s;
+}
+.mobile-tabbar .tab.active{color:var(--accent)}
+.mobile-tabbar .tab svg{width:22px;height:22px}
 
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+/* Scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+/* Animations */
+.stagger{animation:fadeUp .4s ease both}
+.stagger:nth-child(1){animation-delay:.0s}
+.stagger:nth-child(2){animation-delay:.05s}
+.stagger:nth-child(3){animation-delay:.1s}
+.stagger:nth-child(4){animation-delay:.15s}
+.stagger:nth-child(5){animation-delay:.2s}
+.stagger:nth-child(6){animation-delay:.25s}
+
+/* Responsive detail header */
+@media(max-width:768px){
+  .detail-header{padding:16px 16px 12px;flex-direction:column}
+  .timeline{padding:16px 16px 80px}
+  .topbar{padding:8px 16px}
+}
 </style>
 </head>
 <body>
 
-<!-- Login Overlay -->
+<!-- Login -->
 <div class="login-overlay" id="loginOverlay">
   <div class="login-box">
-    <div class="dragon">🐉</div>
-    <h2>貔貅记忆 Besure AI</h2>
-    <div class="sub" data-zh="请输入主密码以Unlock Dashboard" data-en="Enter your master password to unlock">Enter your master password to unlock</div>
-    <input type="password" id="loginPassword" data-zh-ph="主密码" data-en-ph="Master password" placeholder="Master password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="logo">🐉</div>
+    <h2> Besure AI Context</h2>
+    <div class="sub">Enter your master password to unlock</div>
+    <input type="password" id="loginPassword" placeholder="Master password" onkeydown="if(event.key==='Enter')doLogin()">
     <div class="err" id="loginErr"></div>
     <button id="loginBtn" onclick="doLogin()">Unlock</button>
   </div>
 </div>
 
-<!-- Main App (hidden until authed) -->
-<div style="display:none;width:100%;height:100%;flex:1" id="mainApp">
-  <div class="sidebar">
+<!-- App -->
+<div id="mainApp">
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1><span class="dragon">🐉</span> 貔貅记忆 <span class="ver">v0.2.0</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.2.0</span></h1>
     </div>
-    <div class="sidebar-stats" id="stats">
-      <span>📋 <span id="ctxCount">0</span> <span data-zh="上下文" data-en="contexts">contexts</span></span>
-      <span>📝 <span id="entryCount">0</span> <span data-zh="记录" data-en="entries">entries</span></span>
+    <div class="sidebar-stats">
+      <span>📋 <b id="ctxCount">0</b> contexts</span>
+      <span>📝 <b id="entryCount">0</b> entries</span>
     </div>
     <div class="search-box">
-      <input type="text" id="searchInput" data-zh-ph="🔍 搜索..." data-en-ph="🔍 Search..." placeholder="🔍 Search..." oninput="handleSearch()">
+      <input type="text" id="searchInput" placeholder="🔍 Search..." oninput="handleSearch()">
     </div>
     <div class="ctx-list" id="ctxList"></div>
     <div class="sidebar-footer">
-      <button class="btn btn-primary" onclick="showCreateModal()">+ New</button>
-      <button class="btn" onclick="refresh()">↻ Refresh</button>
+      <button class="btn btn-primary" onclick="showCreateModal()" style="flex:1">+ New Context</button>
+      <button class="btn" onclick="refresh()">↻</button>
     </div>
   </div>
 
-  <div class="main">
+  <!-- Main -->
+  <div class="main-area" id="mainArea">
     <div class="topbar">
-      <span>🔒 Encrypted</span>
-      <span class="logout-btn" onclick="doLogout()">Logout</span>
+      <span>🔒 Encrypted · Local-first</span>
+      <span class="logout" style="cursor:pointer;color:var(--text2)" onclick="doLogout()">Logout</span>
     </div>
-    <div id="mainContent">
-      <div class="empty"><div class="dragon">🐉</div><p>Select a context or create a new one</p></div>
+    <div id="mainContent" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <div class="empty"><div class="logo">🐉</div><p>Select a context or create a new one</p></div>
+    </div>
+  </div>
+
+  <!-- Mobile Tabbar -->
+  <div class="mobile-tabbar" id="mobileTabbar">
+    <div class="tab active" onclick="mobileView('list')" id="tabList">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+      <span>Contexts</span>
+    </div>
+    <div class="tab" onclick="mobileView('detail')" id="tabDetail">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span>Timeline</span>
     </div>
   </div>
 </div>
@@ -147,172 +346,236 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 <div class="modal-overlay" id="entryModal">
   <div class="modal">
     <h3>Add Entry</h3>
-    <div class="modal-field"><label>Type</label><select id="entryType"><option value="progress">Progress</option><option value="milestone">Milestone</option><option value="decision">Decision</option><option value="blocker">Blocker</option><option value="note">Note</option></select></div>
+    <div class="modal-field">
+      <label>Type</label>
+      <select id="entryType">
+        <option value="progress">Progress</option>
+        <option value="milestone">Milestone</option>
+        <option value="decision">Decision</option>
+        <option value="blocker">Blocker</option>
+        <option value="note">Note</option>
+      </select>
+    </div>
     <div class="modal-field"><label>Content</label><textarea id="entryContent" rows="3" placeholder="What you did / decided / found"></textarea></div>
     <div class="modal-actions"><button class="btn" onclick="hideModal('entryModal')">Cancel</button><button class="btn btn-primary" onclick="doAddEntry()">Add</button></div>
   </div>
 </div>
 
 <script>
-let SESSION_TOKEN = sessionStorage.getItem('besure_session') || null;
-let currentCtx = null, contexts = [];
-const TYPE_ICONS = {milestone:'🎯',decision:'⚡',progress:'✅',blocker:'🚫',note:'📌',init:'🚀'};
+let SESSION_TOKEN=sessionStorage.getItem('besure_session')||null;
+let currentCtx=null,contexts=[];
+const TYPE_ICONS={milestone:'🎯',decision:'⚡',progress:'✅',blocker:'🚫',note:'📌',init:'🚀'};
 
-async function api(path, opts = {}) {
-  const headers = opts.headers || {};
-  if (SESSION_TOKEN) headers['Authorization'] = 'Bearer ' + SESSION_TOKEN;
-  if (opts.body) headers['Content-Type'] = 'application/json';
-  const res = await fetch(path, {...opts, headers});
-  if (res.status === 401) { showLogin(); throw new Error('Unauthorized'); }
-  if (!res.ok) { const e = await res.json().catch(() => ({error: res.statusText})); throw new Error(e.error || 'Request failed'); }
+async function api(path,opts={}){
+  const headers=opts.headers||{};
+  if(SESSION_TOKEN)headers['Authorization']='Bearer '+SESSION_TOKEN;
+  if(opts.body)headers['Content-Type']='application/json';
+  const res=await fetch(path,{...opts,headers});
+  if(res.status===401){showLogin();throw new Error('Unauthorized')}
+  if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));throw new Error(e.error||'Failed')}
   return res.json();
 }
 
 // === Auth ===
-async function doLogin() {
-  const pw = document.getElementById('loginPassword').value;
-  if (!pw) return;
-  document.getElementById('loginBtn').disabled = true;
-  document.getElementById('loginErr').textContent = '';
-  try {
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({password: pw})
-    });
-    const data = await res.json();
-    if (data.ok && data.data?.token) {
-      SESSION_TOKEN = data.data.token;
-      sessionStorage.setItem('besure_session', SESSION_TOKEN);
-      hideLogin();
-      refresh();
-    } else {
-      document.getElementById('loginErr').textContent = data.error || 'Wrong password';
+async function doLogin(){
+  const pw=document.getElementById('loginPassword').value;
+  if(!pw)return;
+  document.getElementById('loginBtn').disabled=true;
+  document.getElementById('loginErr').textContent='';
+  try{
+    const res=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const data=await res.json();
+    if(data.ok&&data.data?.token){
+      SESSION_TOKEN=data.data.token;
+      sessionStorage.setItem('besure_session',SESSION_TOKEN);
+      hideLogin();refresh();
+    }else{
+      document.getElementById('loginErr').textContent=data.error||'Wrong password';
     }
-  } catch(e) {
-    document.getElementById('loginErr').textContent = 'Connection failed: ' + e.message;
-  }
-  document.getElementById('loginBtn').disabled = false;
+  }catch(e){document.getElementById('loginErr').textContent='Connection failed: '+e.message}
+  document.getElementById('loginBtn').disabled=false;
 }
 
-async function doLogout() {
-  try { await api('/api/auth/logout', {method: 'POST'}); } catch(e) {}
-  SESSION_TOKEN = null;
-  sessionStorage.removeItem('besure_session');
+async function doLogout(){
+  try{await api('/api/auth/logout',{method:'POST'})}catch(e){}
+  SESSION_TOKEN=null;sessionStorage.removeItem('besure_session');
   showLogin();
 }
 
-function showLogin() {
-  document.getElementById('loginOverlay').style.display = 'flex';
-  document.getElementById('mainApp').style.display = 'none';
-  document.getElementById('loginPassword').value = '';
-  document.getElementById('loginPassword').focus();
+function showLogin(){
+  document.getElementById('loginOverlay').style.display='flex';
+  document.getElementById('mainApp').classList.remove('show');
+  document.getElementById('loginPassword').value='';
+  setTimeout(()=>document.getElementById('loginPassword').focus(),100);
+}
+function hideLogin(){
+  document.getElementById('loginOverlay').style.display='none';
+  document.getElementById('mainApp').classList.add('show');
 }
 
-function hideLogin() {
-  document.getElementById('loginOverlay').style.display = 'none';
-  document.getElementById('mainApp').style.display = 'flex';
+// === Mobile Views ===
+function mobileView(view){
+  if(window.innerWidth>768)return;
+  const sidebar=document.getElementById('sidebar');
+  const mainArea=document.getElementById('mainArea');
+  if(view==='list'){
+    sidebar.classList.add('mobile-show');mainArea.classList.remove('mobile-show');
+    document.getElementById('tabList').classList.add('active');
+    document.getElementById('tabDetail').classList.remove('active');
+  }else{
+    sidebar.classList.remove('mobile-show');mainArea.classList.add('mobile-show');
+    document.getElementById('tabList').classList.remove('active');
+    document.getElementById('tabDetail').classList.add('active');
+  }
 }
 
-// === Init ===
-async function init() {
-  if (SESSION_TOKEN) {
-    try {
-      const res = await api('/api/auth/check');
-      if (res.ok) { hideLogin(); refresh(); return; }
-    } catch(e) {}
+// === Data ===
+async function init(){
+  if(SESSION_TOKEN){
+    try{const res=await api('/api/auth/check');if(res.ok){hideLogin();refresh();return}}catch(e){}
   }
   showLogin();
 }
 
-async function refresh() {
-  try {
-    const [ctxRes, statusRes] = await Promise.all([api('/api/contexts'), api('/api/status')]);
-    contexts = ctxRes.data || [];
-    document.getElementById('ctxCount').textContent = statusRes.data?.contexts ?? 0;
-    document.getElementById('entryCount').textContent = statusRes.data?.entries ?? 0;
+async function refresh(){
+  try{
+    const[ctxRes,statusRes]=await Promise.all([api('/api/contexts'),api('/api/status')]);
+    contexts=ctxRes.data||[];
+    document.getElementById('ctxCount').textContent=statusRes.data?.contexts??0;
+    document.getElementById('entryCount').textContent=statusRes.data?.entries??0;
     renderSidebar();
-  } catch(e) { console.error(e); }
+  }catch(e){console.error(e)}
 }
 
-function renderSidebar() {
-  const list = document.getElementById('ctxList');
-  if (!contexts.length) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:13px;">No contexts yet<br>点击「新建」Create</div>'; return; }
-  list.innerHTML = contexts.map(ctx => `<div class="ctx-item ${currentCtx?.id===ctx.id?'active':''}" onclick="selectCtx('${ctx.id}')"><div class="title">${esc(ctx.title)}</div><div class="meta"><span class="status-badge ${ctx.status}">${ctx.status}</span>${(ctx.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>`).join('');
+function renderSidebar(){
+  const list=document.getElementById('ctxList');
+  if(!contexts.length){
+    list.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No contexts yet.<br>Tap "+ New Context" to create one.</div>';
+    return;
+  }
+  list.innerHTML=contexts.map((ctx,i)=>`
+    <div class="ctx-item stagger ${currentCtx?.id===ctx.id?'active':''}" onclick="selectCtx('${ctx.id}')" style="animation-delay:${i*0.05}s">
+      <div class="title">${esc(ctx.title)}</div>
+      <div class="meta">
+        <span class="status-badge ${ctx.status}">${ctx.status}</span>
+        ${(ctx.tags||[]).slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+      </div>
+    </div>
+  `).join('');
 }
 
-async function selectCtx(id) {
-  try {
-    const res = await api(`/api/contexts/${id}/log`);
-    const entries = res.data || [];
-    const ctx = contexts.find(c => c.id === id);
-    currentCtx = ctx;
+async function selectCtx(id){
+  try{
+    const res=await api(`/api/contexts/${id}/log`);
+    const entries=res.data||[];
+    const ctx=contexts.find(c=>c.id===id);
+    currentCtx=ctx;
     renderSidebar();
-    renderDetail(ctx, entries);
-  } catch(e) { console.error(e); }
+    renderDetail(ctx,entries);
+    if(window.innerWidth<=768)mobileView('detail');
+  }catch(e){console.error(e)}
 }
 
-function renderDetail(ctx, entries) {
-  const main = document.getElementById('mainContent');
-  if (!ctx) { main.innerHTML = '<div class="empty"><div class="dragon">🐉</div><p>选择左侧上下文</p></div>'; return; }
-  let entriesHtml = entries.length ? entries.map(e => `<div class="entry"><div class="entry-icon ${e.entry_type}">${TYPE_ICONS[e.entry_type]||'📝'}</div><div class="entry-body"><div style="display:flex;justify-content:space-between;align-items:center;"><span class="entry-type ${e.entry_type}">${e.entry_type}</span><span class="entry-date">${esc(e.date)}</span></div><div class="entry-content">${esc(e.content)}</div></div></div>`).join('') : '<div style="padding:20px;color:var(--text2);">No entries yet</div>';
-  main.innerHTML = `<div class="main-header"><div><h2>${esc(ctx.title)}</h2><div class="subtitle">${ctx.id} · <span class="status-badge ${ctx.status}">${ctx.status}</span> ${ctx.tags?.length?' · '+ctx.tags.map(t=>'#'+esc(t)).join(' '):''} ${ctx.summary?' · '+esc(ctx.summary):''}</div></div><div class="main-actions"><button class="btn btn-primary btn-sm" onclick="showEntryModal()">+ Add Entry</button><button class="btn btn-sm" onclick="exportCtx('${ctx.id}')">导出</button></div></div><div class="timeline">${entriesHtml}</div>`;
+function renderDetail(ctx,entries){
+  const main=document.getElementById('mainContent');
+  if(!ctx){main.innerHTML='<div class="empty"><div class="logo">🐉</div><p>Select a context</p></div>';return}
+  let entriesHtml=entries.length?entries.map((e,i)=>`
+    <div class="entry stagger" style="animation-delay:${i*0.04}s">
+      <div class="entry-bar ${e.entry_type}"></div>
+      <div class="entry-body">
+        <div class="entry-top">
+          <span class="entry-type ${e.entry_type}">${TYPE_ICONS[e.entry_type]||'📝'} ${e.entry_type}</span>
+          <span class="entry-date">${esc(e.date)}</span>
+        </div>
+        <div class="entry-content">${esc(e.content)}</div>
+      </div>
+    </div>
+  `).join(''):'<div style="padding:24px;text-align:center;color:var(--text3)">No entries yet</div>';
+
+  main.innerHTML=`
+    <div class="detail-header">
+      <div>
+        <h2>${esc(ctx.title)}</h2>
+        <div class="subtitle">
+          <span class="id-badge">${esc(ctx.id)}</span>
+          <span class="status-badge ${ctx.status}">${ctx.status}</span>
+          ${(ctx.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+          ${ctx.summary?' · '+esc(ctx.summary):''}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn btn-primary btn-sm" onclick="showEntryModal()">+ Add Entry</button>
+        <button class="btn btn-sm" onclick="exportCtx('${ctx.id}')">Export</button>
+      </div>
+    </div>
+    <div class="timeline">${entriesHtml}</div>
+  `;
 }
 
-let searchTimer = null;
-function handleSearch() {
+// === Search ===
+let searchTimer=null;
+function handleSearch(){
   clearTimeout(searchTimer);
-  const q = document.getElementById('searchInput').value.trim();
-  if (!q) { renderSidebar(); if (currentCtx) selectCtx(currentCtx.id); return; }
-  searchTimer = setTimeout(() => doSearch(q), 300);
+  const q=document.getElementById('searchInput').value.trim();
+  if(!q){renderSidebar();if(currentCtx)selectCtx(currentCtx.id);return}
+  searchTimer=setTimeout(()=>doSearch(q),250);
 }
 
-async function doSearch(q) {
-  try {
-    const res = await api(`/api/search?q=${encodeURIComponent(q)}`);
-    const results = res.data || [];
-    const list = document.getElementById('ctxList');
-    if (!results.length) { list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text2);font-size:13px;">没有"${esc(q)}"的结果</div>`; return; }
-    list.innerHTML = results.map(r => `<div class="ctx-item" onclick="selectCtx('${r.context.id}')"><div class="title">${esc(r.context.title)}</div><div class="meta"><span class="status-badge ${r.context.status}">${r.context.status}</span><span style="color:var(--text2);font-size:11px;">${esc(r.entry.entry_type)} · ${esc(r.entry.content.slice(0,40))}...</span></div></div>`).join('');
-  } catch(e) { console.error(e); }
+async function doSearch(q){
+  try{
+    const res=await api(`/api/search?q=${encodeURIComponent(q)}`);
+    const results=res.data||[];
+    const list=document.getElementById('ctxList');
+    if(!results.length){list.innerHTML=`<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No results for "${esc(q)}"</div>`;return}
+    list.innerHTML=results.map(r=>`
+      <div class="ctx-item" onclick="selectCtx('${r.context.id}')">
+        <div class="title">${esc(r.context.title)}</div>
+        <div class="meta">
+          <span class="status-badge ${r.context.status}">${r.context.status}</span>
+          <span style="font-size:11px;color:var(--text3)">${esc(r.entry.entry_type)} · ${esc(r.entry.content.slice(0,50))}...</span>
+        </div>
+      </div>
+    `).join('');
+  }catch(e){console.error(e)}
 }
 
-function showCreateModal() { showModal('createModal'); }
-function showEntryModal() { if (!currentCtx) { alert('Please select a context first'); return; } showModal('entryModal'); }
-function showModal(id) { document.getElementById(id).classList.add('show'); }
-function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+// === Modals ===
+function showCreateModal(){showModal('createModal')}
+function showEntryModal(){if(!currentCtx){alert('Select a context first');return}showModal('entryModal')}
+function showModal(id){document.getElementById(id).classList.add('show')}
+function hideModal(id){document.getElementById(id).classList.remove('show')}
 
-async function doCreate() {
-  const title = document.getElementById('createTitle').value.trim();
-  if (!title) { alert('Please enter a title'); return; }
-  const tags = document.getElementById('createTags').value.split(',').map(s=>s.trim()).filter(Boolean);
-  const summary = document.getElementById('createSummary').value.trim();
-  try {
-    await api('/api/contexts', {method:'POST',body:JSON.stringify({title,tags,summary})});
+async function doCreate(){
+  const title=document.getElementById('createTitle').value.trim();
+  if(!title){alert('Please enter a title');return}
+  const tags=document.getElementById('createTags').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const summary=document.getElementById('createSummary').value.trim();
+  try{
+    await api('/api/contexts',{method:'POST',body:JSON.stringify({title,tags,summary})});
     hideModal('createModal');
-    document.getElementById('createTitle').value=''; document.getElementById('createTags').value=''; document.getElementById('createSummary').value='';
+    document.getElementById('createTitle').value='';document.getElementById('createTags').value='';document.getElementById('createSummary').value='';
     await refresh();
-  } catch(e) { alert('Create失败: '+e.message); }
+  }catch(e){alert('Create failed: '+e.message)}
 }
 
-async function doAddEntry() {
-  const content = document.getElementById('entryContent').value.trim();
-  if (!content) { alert('请输入Content'); return; }
-  const entry_type = document.getElementById('entryType').value;
-  try {
-    await api(`/api/contexts/${currentCtx.id}/entries`, {method:'POST',body:JSON.stringify({content,entry_type})});
+async function doAddEntry(){
+  const content=document.getElementById('entryContent').value.trim();
+  if(!content){alert('Please enter content');return}
+  const entry_type=document.getElementById('entryType').value;
+  try{
+    await api(`/api/contexts/${currentCtx.id}/entries`,{method:'POST',body:JSON.stringify({content,entry_type})});
     hideModal('entryModal');
     document.getElementById('entryContent').value='';
-    await selectCtx(currentCtx.id);
-    refresh();
-  } catch(e) { alert('Add失败: '+e.message); }
+    await selectCtx(currentCtx.id);refresh();
+  }catch(e){alert('Add failed: '+e.message)}
 }
 
-function exportCtx(id) { window.open(`/api/contexts/${id}/export`, '_blank'); }
-function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+function exportCtx(id){window.open(`/api/contexts/${id}/export`,'_blank')}
+function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
 
+// Init
 init();
-setInterval(() => { if (SESSION_TOKEN) refresh(); }, 30000);
+setInterval(()=>{if(SESSION_TOKEN)refresh()},30000);
 </script>
 </body>
 </html>
