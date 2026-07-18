@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.2.0",
+    version = "0.3.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -20,14 +20,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// 初始化 vault
+    /// Initialize vault
     #[command(name = "init")]
     Init {
         #[arg(long, action = ArgAction::SetTrue)]
         encrypt: bool,
     },
 
-    /// 创建新上下文
+    /// Create a new context
     #[command(name = "create")]
     Create {
         title: String,
@@ -37,44 +37,44 @@ enum Commands {
         summary: Option<String>,
     },
 
-    /// 切换到某上下文
+    /// Switch to a context
     #[command(name = "switch")]
     Switch {
         query: String,
     },
 
-    /// 添加进展记录
+    /// Add a progress entry
     #[command(name = "add")]
     Add {
-        /// 内容（与 --from-file 二选一）
+        /// Content text (alternative: --from-file)
         content: Option<String>,
-        /// 从文件读取多段落内容（Markdown）
+        /// Read multi-paragraph content from file (Markdown)
         #[arg(long = "from-file")]
         from_file: Option<String>,
         #[arg(short = 't', long = "type", default_value = "progress")]
         entry_type: String,
     },
 
-    /// 列出所有上下文
+    /// List all contexts
     #[command(name = "list")]
     List,
 
-    /// 查看上下文时间线
+    /// View context timeline
     #[command(name = "log")]
     Log {
         context: Option<String>,
     },
 
-    /// 搜索（全文匹配 + 语义搜索）
+    /// Search (text match + semantic search)
     #[command(name = "search")]
     Search {
         query: String,
-        /// 使用语义搜索（需配置 embedding）
+        /// Use semantic search (requires embedding config)
         #[arg(long, action = ArgAction::SetTrue)]
         semantic: bool,
     },
 
-    /// 导出上下文
+    /// Export a context
     #[command(name = "export")]
     Export {
         context: String,
@@ -82,47 +82,91 @@ enum Commands {
         output: Option<String>,
     },
 
-    /// 解锁 vault
+    /// Unlock vault
     #[command(name = "unlock")]
     Unlock,
 
-    /// 锁定 vault
+    /// Lock vault
     #[command(name = "lock")]
     Lock,
 
-    /// 查看 vault 状态
+    /// View vault status
     #[command(name = "status")]
     Status,
 
-    /// 自动提取进展（从 stdin 或文件）
+    /// Auto-extract progress from text (stdin or file)
     #[command(name = "absorb")]
     Absorb {
-        /// 从文件读取（不指定则读 stdin）
+        /// Read from file (default: stdin)
         #[arg(long)]
         from: Option<String>,
-        /// 自动添加到当前上下文
+        /// Auto-add to current context
         #[arg(long, action = ArgAction::SetTrue)]
         auto: bool,
     },
 
-    /// 启动 MCP Server (stdio)
+    /// Start MCP Server (stdio)
     #[command(name = "mcp")]
     Mcp,
 
-    /// 启动 REST API 服务器
+    /// Start REST API / Dashboard server
     #[command(name = "serve")]
     Serve {
         #[arg(long, default_value = "7788")]
         port: u16,
     },
 
-    /// 配置管理
-    #[command(name = "config")]
-    Config {
-        /// set key value
+    /// App-level config (embedding/llm settings)
+    #[command(name = "appconfig")]
+    AppConfig {
+        /// config key (e.g. embedding.provider)
         key: String,
         value: String,
     },
+
+    /// Context-level config entries (stored as entries with type="config")
+    #[command(name = "config")]
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+
+    /// Link an entry to another entry
+    #[command(name = "link")]
+    Link {
+        entry_id: String,
+        #[arg(long)]
+        to: String,
+        #[arg(long = "as")]
+        as_relation: Option<String>,
+    },
+
+    /// Mark an entry as expired
+    #[command(name = "expire")]
+    Expire {
+        entry_id: String,
+    },
+
+    /// Supersede an old entry with a new one
+    #[command(name = "supersede")]
+    Supersede {
+        old_id: String,
+        new_id: String,
+    },
+
+    /// Recall entries that need attention (expiring, overdue, recent)
+    #[command(name = "recall")]
+    Recall,
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Set a config value: `besure config set <key> <value>`
+    Set { key: String, value: String },
+    /// Get a config value: `besure config get <key>`
+    Get { key: String },
+    /// List all config: `besure config list`
+    List,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -160,8 +204,25 @@ fn main() -> anyhow::Result<()> {
                 ai::rest_api::ApiServer::new(port).run().await
             })
         }
-        Commands::Config { key, value } => {
+        Commands::AppConfig { key, value } => {
             cli::commands::cmd_config_set(&key, &value)
+        }
+        Commands::Config { action } => match action {
+            ConfigAction::Set { key, value } => cli::commands::cmd_config_set_entry(&key, &value),
+            ConfigAction::Get { key } => cli::commands::cmd_config_get(&key),
+            ConfigAction::List => cli::commands::cmd_config_list(),
+        },
+        Commands::Link { entry_id, to, as_relation } => {
+            cli::commands::cmd_link(&entry_id, &to, as_relation.as_deref())
+        }
+        Commands::Expire { entry_id } => {
+            cli::commands::cmd_expire(&entry_id)
+        }
+        Commands::Supersede { old_id, new_id } => {
+            cli::commands::cmd_supersede(&old_id, &new_id)
+        }
+        Commands::Recall => {
+            cli::commands::cmd_recall()
         }
     }
 }

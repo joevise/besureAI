@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use besure_lib::ai::{EmbeddingProvider, embedding::EmbeddingConfig, Absorber, absorb::LlmConfig, VectorStore};
-use besure_lib::storage::{Vault, Context, Entry};
+use besure_lib::storage::{Vault, Context, Entry, EntryLink, EntryStatus, LinkRelation};
 
 fn read_password(prompt: &str) -> Result<String> {
     eprint!("{}", prompt);
@@ -21,7 +21,7 @@ fn get_vault() -> Result<Vault> {
 }
 
 fn get_unlocked_vault() -> Result<Vault> {
-    let mut vault = get_vault()?;
+    let vault = get_vault()?;
     if vault.config.encryption && !vault.is_unlocked() {
         bail!("Vault is locked. Run 'besure unlock' first.");
     }
@@ -96,14 +96,14 @@ pub fn cmd_switch_from_args(query: &str) -> Result<()> {
     let mut vault = get_unlocked_vault()?;
     let db = vault.database()?;
 
-    // 精确匹配
+    // Exact match
     if let Some(ctx) = db.get_context(query)? {
         vault.set_current(&ctx.id)?;
         println!("✓ Switched to: {} ({})", ctx.title, ctx.id);
         return Ok(());
     }
 
-    // 模糊匹配
+    // Fuzzy match
     let found = db.find_contexts_fuzzy(query)?;
     match found.len() {
         0 => bail!("No context found matching '{}'", query),
@@ -141,7 +141,6 @@ pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_t
         .as_ref()
         .context("No active context. Run 'besure create' or 'besure switch' first.")?;
 
-    // Resolve content: --from-file takes priority, then positional arg
     let final_content = if let Some(path) = from_file {
         std::fs::read_to_string(path)
             .with_context(|| format!("failed to read file: {}", path))?
@@ -239,13 +238,29 @@ pub fn cmd_log_from_args(context: Option<&str>) -> Result<()> {
         println!("No entries yet.");
     } else {
         for (i, entry) in entries.iter().enumerate() {
+            let status_marker = match entry.status {
+                EntryStatus::Active => "",
+                EntryStatus::Superseded => " [superseded]",
+                EntryStatus::Expired => " [expired]",
+                EntryStatus::Archived => " [archived]",
+            };
             println!(
-                "┌─ [{}] {} ({})",
+                "┌─ [{}] {} ({}){}",
                 entries.len() - i,
                 entry.date,
-                entry.entry_type
+                entry.entry_type,
+                status_marker
             );
             println!("│ {}", entry.content);
+            if !entry.links.is_empty() {
+                let links_str: Vec<String> = entry.links.iter()
+                    .map(|l| format!("{}({})", l.relation, l.target_id))
+                    .collect();
+                println!("│ 🔗 {}", links_str.join(", "));
+            }
+            if let Some(ref vu) = entry.valid_until {
+                println!("│ ⏰ expires: {}", vu);
+            }
             println!("└─\n");
         }
     }
@@ -434,7 +449,7 @@ pub fn cmd_absorb_from_args(from: Option<&str>, auto: bool) -> Result<()> {
     Ok(())
 }
 
-// === config ===
+// === config set (app config: embedding/llm etc.) ===
 pub fn cmd_config_set(key: &str, value: &str) -> Result<()> {
     let mut config = load_config()?;
     match key {
@@ -478,6 +493,234 @@ fn do_semantic_search(query: &str) -> Result<()> {
     for (i, r) in results.iter().enumerate() {
         println!("  [{}] {:.2} | {} | {}", i + 1, r.score, r.context_id, truncate(&r.chunk_text, 50));
     }
+    Ok(())
+}
+
+// === NEW: link command ===
+/// `besure link <entry_id> --to <target_id> [--as <relation>]`
+pub fn cmd_link(entry_id: &str, target_id: &str, as_relation: Option<&str>) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    // Verify entry exists
+    let entry = db.get_entry(entry_id)?.context("entry not found")?;
+
+    // Parse relation (default: related_to)
+    let relation: LinkRelation = match as_relation {
+        Some(r) => r.parse().map_err(|e: String| anyhow::anyhow!("{}", e))?,
+        None => LinkRelation::RelatedTo,
+    };
+
+    let link = EntryLink {
+        target_id: target_id.to_string(),
+        relation: relation.clone(),
+    };
+
+    db.add_entry_link(entry_id, &link)?;
+
+    println!("✓ Linked {} → {} ({})", entry_id, target_id, relation);
+    Ok(())
+}
+
+// === NEW: expire command ===
+/// `besure expire <entry_id>`
+pub fn cmd_expire(entry_id: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    // Verify entry exists
+    let entry = db.get_entry(entry_id)?.context("entry not found")?;
+
+    db.update_entry_status(entry_id, &EntryStatus::Expired, None)?;
+
+    println!("✓ Entry {} expired", entry_id);
+    println!("  content: {}", truncate(&entry.content, 60));
+    Ok(())
+}
+
+// === NEW: supersede command ===
+/// `besure supersede <old_id> <new_id>`
+pub fn cmd_supersede(old_id: &str, new_id: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    // Verify both entries exist
+    let old_entry = db.get_entry(old_id)?.context("old entry not found")?;
+    let new_entry = db.get_entry(new_id)?.context("new entry not found")?;
+
+    // Set old entry to Superseded with pointer to new
+    db.update_entry_status(old_id, &EntryStatus::Superseded, Some(new_id))?;
+
+    // Add Supersedes link from new entry to old
+    let link = EntryLink {
+        target_id: old_id.to_string(),
+        relation: LinkRelation::Supersedes,
+    };
+    db.add_entry_link(new_id, &link)?;
+
+    println!("✓ {} superseded by {}", old_id, new_id);
+    println!("  old: {}", truncate(&old_entry.content, 50));
+    println!("  new: {}", truncate(&new_entry.content, 50));
+    Ok(())
+}
+
+// === NEW: config entry commands ===
+/// `besure config set <key> <value>` — stores as entry with type "config"
+pub fn cmd_config_set_entry(key: &str, value: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let context_id = vault
+        .current_context
+        .as_ref()
+        .context("No active context. Run 'besure switch' first.")?;
+
+    let content = format!("{}: {}", key, value);
+    let entry = Entry::new(context_id, &content, "config");
+
+    let db = vault.database()?;
+    db.add_entry(&entry)?;
+    vault.write_entry_md(&entry)?;
+
+    println!("✓ Config set: {} = {}", key, value);
+    Ok(())
+}
+
+/// `besure config get <key>` — searches config entries by content prefix
+pub fn cmd_config_get(key: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+    let context_id = vault
+        .current_context
+        .as_ref()
+        .context("No active context")?;
+
+    let entries = db.list_entries(context_id)?;
+    let prefix = format!("{}:", key);
+
+    let found: Vec<_> = entries
+        .iter()
+        .filter(|e| e.entry_type == "config" && e.content.starts_with(&prefix))
+        .collect();
+
+    if found.is_empty() {
+        println!("No config found for key '{}'", key);
+        return Ok(());
+    }
+
+    for entry in found {
+        let value = entry.content.strip_prefix(&prefix).unwrap_or("").trim();
+        println!("{} = {}", key, value);
+    }
+    Ok(())
+}
+
+/// `besure config list` — list all config entries in current context
+pub fn cmd_config_list() -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+    let context_id = vault
+        .current_context
+        .as_ref()
+        .context("No active context")?;
+
+    let entries = db.list_entries(context_id)?;
+    let configs: Vec<_> = entries.iter().filter(|e| e.entry_type == "config").collect();
+
+    if configs.is_empty() {
+        println!("No config entries in current context.");
+        return Ok(());
+    }
+
+    println!("Config ({}):", context_id);
+    for entry in configs {
+        let line = entry.content.clone();
+        println!("  {}", line);
+    }
+    Ok(())
+}
+
+// === NEW: recall command ===
+/// `besure recall` — returns entries that need attention
+pub fn cmd_recall() -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    let context_id = vault
+        .current_context
+        .as_ref()
+        .context("No active context")?;
+
+    let now = chrono::Utc::now();
+    let now_str = now.format("%Y-%m-%d").to_string();
+    let seven_days_later = (now + chrono::Duration::days(7)).format("%Y-%m-%d").to_string();
+    let twenty_four_h_ago = (now - chrono::Duration::hours(24)).format("%Y-%m-%d %H:%M").to_string();
+
+    let entries = db.list_entries(context_id)?;
+
+    let mut expiring_soon: Vec<&Entry> = Vec::new();
+    let mut overdue: Vec<&Entry> = Vec::new();
+    let mut recent: Vec<&Entry> = Vec::new();
+    let mut superseded: Vec<&Entry> = Vec::new();
+
+    for e in &entries {
+        match e.status {
+            EntryStatus::Active => {
+                if let Some(ref vu) = e.valid_until {
+                    if vu.as_str() < now_str.as_str() {
+                        overdue.push(e);
+                    } else if vu.as_str() <= seven_days_later.as_str() {
+                        expiring_soon.push(e);
+                    }
+                }
+                if e.date.as_str() >= twenty_four_h_ago.as_str() {
+                    recent.push(e);
+                }
+            }
+            EntryStatus::Superseded => {
+                superseded.push(e);
+            }
+            _ => {}
+        }
+    }
+
+    if expiring_soon.is_empty() && overdue.is_empty() && recent.is_empty() && superseded.is_empty() {
+        println!("Nothing to recall. All quiet. 🧘");
+        return Ok(());
+    }
+
+    if !expiring_soon.is_empty() {
+        println!("⚠️  Expiring Soon:");
+        for e in &expiring_soon {
+            println!("  [{}] {} (expires {})",
+                e.id, truncate(e.content.trim(), 50), e.valid_until.as_ref().unwrap());
+        }
+        println!();
+    }
+
+    if !overdue.is_empty() {
+        println!("🔴 Overdue:");
+        for e in &overdue {
+            println!("  [{}] {} (expired {})",
+                e.id, truncate(e.content.trim(), 50), e.valid_until.as_ref().unwrap());
+        }
+        println!();
+    }
+
+    if !recent.is_empty() {
+        println!("📍 Recent (24h):");
+        for e in &recent {
+            println!("  [{}] {}", e.id, truncate(e.content.trim(), 50));
+        }
+        println!();
+    }
+
+    if !superseded.is_empty() {
+        println!("⬜ Superseded:");
+        for e in &superseded {
+            let by = e.superseded_by.as_deref().unwrap_or("?");
+            println!("  [{}] {} → {}", e.id, truncate(e.content.trim(), 40), by);
+        }
+    }
+
     Ok(())
 }
 

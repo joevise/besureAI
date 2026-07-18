@@ -2,30 +2,32 @@ use anyhow::{Context as AnyhowContext, Result};
 use rusqlite::{params, Connection};
 use std::path::Path;
 
-use super::models::{Context, ContextStatus, Entry};
+use super::models::{Context, ContextStatus, Entry, EntryLink, EntryStatus, LinkRelation};
 
-/// SQLite 数据库管理
+/// SQLite database manager
 pub struct Database {
     conn: Connection,
 }
 
 impl Database {
-    /// 打开/创建数据库
+    /// Open/create database
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)
             .with_context(|| format!("failed to open database: {}", path.display()))?;
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
         let db = Self { conn };
         db.init_schema()?;
+        db.run_migrations()?;
         Ok(db)
     }
 
-    /// 从内存创建（测试用）
+    /// Create in-memory database (for tests)
     #[cfg(test)]
     pub fn open_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         let db = Self { conn };
         db.init_schema()?;
+        db.run_migrations()?;
         Ok(db)
     }
 
@@ -53,6 +55,11 @@ impl Database {
                 entry_type  TEXT NOT NULL DEFAULT 'progress',
                 content     TEXT NOT NULL,
                 tags        TEXT NOT NULL DEFAULT '[]',
+                links       TEXT NOT NULL DEFAULT '[]',
+                valid_from  TEXT NOT NULL DEFAULT '',
+                valid_until TEXT,
+                status      TEXT NOT NULL DEFAULT 'active',
+                superseded_by TEXT,
                 FOREIGN KEY (context_id) REFERENCES contexts(id)
             );
 
@@ -64,7 +71,40 @@ impl Database {
         Ok(())
     }
 
-    /// 插入/更新上下文
+    /// Idempotent migration: add new columns to legacy databases.
+    /// Safe to run multiple times — ignores "duplicate column" errors.
+    fn run_migrations(&self) -> Result<()> {
+        let columns: &[(&str, &str)] = &[
+            ("links", "TEXT NOT NULL DEFAULT '[]'"),
+            ("valid_from", "TEXT NOT NULL DEFAULT ''"),
+            ("valid_until", "TEXT"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("superseded_by", "TEXT"),
+        ];
+
+        for (col, def) in columns {
+            let sql = format!("ALTER TABLE entries ADD COLUMN {} {}", col, def);
+            match self.conn.execute(&sql, []) {
+                Ok(_) => {}
+                Err(e) => {
+                    let msg = e.to_string();
+                    if !msg.contains("duplicate column") {
+                        return Err(anyhow::anyhow!("migration error: {}", e));
+                    }
+                }
+            }
+        }
+
+        // Add status index if not exists
+        let _ = self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entries_status ON entries(status)",
+            [],
+        );
+
+        Ok(())
+    }
+
+    /// Insert/update context
     pub fn upsert_context(&self, ctx: &Context) -> Result<()> {
         self.conn.execute(
             r#"INSERT OR REPLACE INTO contexts
@@ -87,7 +127,7 @@ impl Database {
         Ok(())
     }
 
-    /// 获取上下文
+    /// Get context by id
     pub fn get_context(&self, id: &str) -> Result<Option<Context>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE id = ?1",
@@ -101,7 +141,7 @@ impl Database {
         }
     }
 
-    /// 列出所有上下文
+    /// List all contexts
     pub fn list_contexts(&self) -> Result<Vec<Context>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts ORDER BY updated DESC",
@@ -115,7 +155,7 @@ impl Database {
         Ok(contexts)
     }
 
-    /// 按状态过滤
+    /// Filter contexts by status
     pub fn list_contexts_by_status(&self, status: &ContextStatus) -> Result<Vec<Context>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE status = ?1 ORDER BY updated DESC",
@@ -129,7 +169,7 @@ impl Database {
         Ok(contexts)
     }
 
-    /// 模糊匹配上下文 ID
+    /// Fuzzy match context id/title
     pub fn find_contexts_fuzzy(&self, query: &str) -> Result<Vec<Context>> {
         let pattern = format!("%{}%", query);
         let mut stmt = self.conn.prepare(
@@ -144,7 +184,7 @@ impl Database {
         Ok(contexts)
     }
 
-    /// 更新上下文状态
+    /// Update context status
     pub fn update_context_status(&self, id: &str, status: &ContextStatus) -> Result<()> {
         let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
         self.conn.execute(
@@ -154,7 +194,7 @@ impl Database {
         Ok(())
     }
 
-    /// 更新上下文的 updated 时间戳
+    /// Touch context's updated timestamp
     pub fn touch_context(&self, id: &str) -> Result<()> {
         let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
         self.conn.execute(
@@ -164,12 +204,12 @@ impl Database {
         Ok(())
     }
 
-    /// 添加进展记录
+    /// Add an entry
     pub fn add_entry(&self, entry: &Entry) -> Result<()> {
         self.conn.execute(
             r#"INSERT OR REPLACE INTO entries
-               (id, context_id, date, entry_type, content, tags)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+               (id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#,
             params![
                 entry.id,
                 entry.context_id,
@@ -177,44 +217,111 @@ impl Database {
                 entry.entry_type,
                 entry.content,
                 serde_json::to_string(&entry.tags)?,
+                serde_json::to_string(&entry.links)?,
+                entry.valid_from,
+                entry.valid_until,
+                entry.status.to_string(),
+                entry.superseded_by,
             ],
         )?;
         self.touch_context(&entry.context_id)?;
         Ok(())
     }
 
-    /// 获取某上下文的所有记录（按时间倒序）
+    /// Get a single entry by id
+    pub fn get_entry(&self, id: &str) -> Result<Option<Entry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by FROM entries WHERE id = ?1",
+        )?;
+
+        let mut rows = stmt.query(params![id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(self.row_to_entry(row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// List all entries for a context (newest first)
     pub fn list_entries(&self, context_id: &str) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, context_id, date, entry_type, content, tags FROM entries WHERE context_id = ?1 ORDER BY date DESC",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by FROM entries WHERE context_id = ?1 ORDER BY date DESC",
         )?;
 
         let entries = stmt
-            .query_map(params![context_id], |row| {
-                let tags_str: String = row.get(5)?;
-                let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
-                Ok(Entry {
-                    id: row.get(0)?,
-                    context_id: row.get(1)?,
-                    date: row.get(2)?,
-                    entry_type: row.get(3)?,
-                    content: row.get(4)?,
-                    tags,
-                })
-            })?
+            .query_map(params![context_id], |row| self.row_to_entry(row))?
             .filter_map(|r| r.ok())
             .collect();
 
         Ok(entries)
     }
 
-    /// 全文搜索（LIKE 匹配 content + title）
+    /// List entries by status within a context
+    pub fn list_entries_by_status(&self, context_id: &str, status: &EntryStatus) -> Result<Vec<Entry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by FROM entries WHERE context_id = ?1 AND status = ?2 ORDER BY date DESC",
+        )?;
+
+        let entries = stmt
+            .query_map(params![context_id, status.to_string()], |row| self.row_to_entry(row))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(entries)
+    }
+
+    /// List entries that expire before a given date
+    pub fn list_expiring_entries(&self, context_id: &str, before_date: &str) -> Result<Vec<Entry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by FROM entries WHERE context_id = ?1 AND status = 'active' AND valid_until IS NOT NULL AND valid_until < ?2 ORDER BY valid_until ASC",
+        )?;
+
+        let entries = stmt
+            .query_map(params![context_id, before_date], |row| self.row_to_entry(row))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(entries)
+    }
+
+    /// Update an entry's status (and optionally set superseded_by)
+    pub fn update_entry_status(&self, id: &str, status: &EntryStatus, superseded_by: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE entries SET status = ?1, superseded_by = ?2 WHERE id = ?3",
+            params![status.to_string(), superseded_by, id],
+        )?;
+        Ok(())
+    }
+
+    /// Add a link to an entry (appends to links JSON array)
+    pub fn add_entry_link(&self, entry_id: &str, link: &EntryLink) -> Result<()> {
+        // Fetch current links
+        let entry = self.get_entry(entry_id)?
+            .context("entry not found for linking")?;
+
+        let mut links = entry.links;
+        // Avoid duplicate (same target + same relation)
+        let exists = links.iter().any(|l| l.target_id == link.target_id && l.relation == link.relation);
+        if !exists {
+            links.push(link.clone());
+        }
+
+        let links_json = serde_json::to_string(&links)?;
+        self.conn.execute(
+            "UPDATE entries SET links = ?1 WHERE id = ?2",
+            params![links_json, entry_id],
+        )?;
+        Ok(())
+    }
+
+    /// Full-text search (LIKE match on content + title)
     pub fn search(&self, query: &str) -> Result<Vec<(Context, Entry)>> {
         let pattern = format!("%{}%", query);
         let mut stmt = self.conn.prepare(
             r#"SELECT c.id, c.title, c.status, c.created, c.updated, c.tags, c.summary,
                       c.current_milestone, c.next_steps, c.related, c.shareable,
-                      e.id, e.context_id, e.date, e.entry_type, e.content, e.tags
+                      e.id, e.context_id, e.date, e.entry_type, e.content, e.tags,
+                      e.links, e.valid_from, e.valid_until, e.status, e.superseded_by
                FROM entries e
                JOIN contexts c ON e.context_id = c.id
                WHERE e.content LIKE ?1 OR c.title LIKE ?1 OR c.summary LIKE ?1
@@ -224,16 +331,7 @@ impl Database {
         let results = stmt
             .query_map(params![pattern], |row| {
                 let ctx = Database::row_to_context_from_row(row, 0)?;
-                let tags_str: String = row.get(16)?;
-                let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
-                let entry = Entry {
-                    id: row.get(11)?,
-                    context_id: row.get(12)?,
-                    date: row.get(13)?,
-                    entry_type: row.get(14)?,
-                    content: row.get(15)?,
-                    tags,
-                };
+                let entry = Database::row_to_entry_from_row(row, 11)?;
                 Ok((ctx, entry))
             })?
             .filter_map(|r| r.ok())
@@ -270,13 +368,40 @@ impl Database {
         })
     }
 
-    /// 获取上下文数量
+    fn row_to_entry(&self, row: &rusqlite::Row) -> Result<Entry, rusqlite::Error> {
+        Database::row_to_entry_from_row(row, 0)
+    }
+
+    fn row_to_entry_from_row(
+        row: &rusqlite::Row,
+        offset: usize,
+    ) -> Result<Entry, rusqlite::Error> {
+        let tags_str: String = row.get(offset + 5)?;
+        let links_str: String = row.get(offset + 6).unwrap_or_else(|_| "[]".to_string());
+        let status_str: String = row.get(offset + 9).unwrap_or_else(|_| "active".to_string());
+
+        Ok(Entry {
+            id: row.get(offset)?,
+            context_id: row.get(offset + 1)?,
+            date: row.get(offset + 2)?,
+            entry_type: row.get(offset + 3)?,
+            content: row.get(offset + 4)?,
+            tags: serde_json::from_str(&tags_str).unwrap_or_default(),
+            links: serde_json::from_str(&links_str).unwrap_or_default(),
+            valid_from: row.get(offset + 7).unwrap_or_default(),
+            valid_until: row.get(offset + 8).ok(),
+            status: status_str.parse().unwrap_or(EntryStatus::Active),
+            superseded_by: row.get(offset + 10).ok(),
+        })
+    }
+
+    /// Count contexts
     pub fn count_contexts(&self) -> Result<i64> {
         let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM contexts", [], |row| row.get(0))?;
         Ok(count)
     }
 
-    /// 获取记录数量
+    /// Count entries
     pub fn count_entries(&self) -> Result<i64> {
         let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get(0))?;
         Ok(count)
@@ -315,6 +440,8 @@ mod tests {
         let entries = db.list_entries(&ctx.id).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].content, "完成了第一版");
+        assert_eq!(entries[0].status, EntryStatus::Active);
+        assert!(entries[0].links.is_empty());
     }
 
     #[test]
@@ -342,5 +469,74 @@ mod tests {
 
         let found = db.find_contexts_fuzzy("quant").unwrap();
         assert!(!found.is_empty());
+    }
+
+    #[test]
+    fn test_entry_status_update() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Status Test");
+        db.upsert_context(&ctx).unwrap();
+
+        let entry = Entry::new(&ctx.id, "test content", "note");
+        db.add_entry(&entry).unwrap();
+
+        db.update_entry_status(&entry.id, &EntryStatus::Expired, None).unwrap();
+
+        let fetched = db.get_entry(&entry.id).unwrap().unwrap();
+        assert_eq!(fetched.status, EntryStatus::Expired);
+    }
+
+    #[test]
+    fn test_entry_link() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Link Test");
+        db.upsert_context(&ctx).unwrap();
+
+        let entry1 = Entry::new(&ctx.id, "first entry", "progress");
+        let entry2 = Entry::new(&ctx.id, "second entry", "progress");
+        db.add_entry(&entry1).unwrap();
+        db.add_entry(&entry2).unwrap();
+
+        let link = EntryLink {
+            target_id: entry2.id.clone(),
+            relation: LinkRelation::RelatedTo,
+        };
+        db.add_entry_link(&entry1.id, &link).unwrap();
+
+        let fetched = db.get_entry(&entry1.id).unwrap().unwrap();
+        assert_eq!(fetched.links.len(), 1);
+        assert_eq!(fetched.links[0].target_id, entry2.id);
+    }
+
+    #[test]
+    fn test_list_by_status() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("ListStatus Test");
+        db.upsert_context(&ctx).unwrap();
+
+        let mut e1 = Entry::new(&ctx.id, "active one", "note");
+        e1.id = format!("{}_{}_1", ctx.id, chrono::Utc::now().timestamp());
+        let mut e2 = Entry::new(&ctx.id, "archived one", "note");
+        e2.id = format!("{}_{}_2", ctx.id, chrono::Utc::now().timestamp());
+        db.add_entry(&e1).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        db.add_entry(&e2).unwrap();
+        db.update_entry_status(&e2.id, &EntryStatus::Archived, None).unwrap();
+
+        let active = db.list_entries_by_status(&ctx.id, &EntryStatus::Active).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].content, "active one");
+
+        let archived = db.list_entries_by_status(&ctx.id, &EntryStatus::Archived).unwrap();
+        assert_eq!(archived.len(), 1);
+    }
+
+    #[test]
+    fn test_migration_idempotent() {
+        // Running migrations multiple times should not error
+        let db = Database::open_memory().unwrap();
+        // Migration already ran in open_memory, run again
+        db.run_migrations().unwrap();
+        db.run_migrations().unwrap();
     }
 }

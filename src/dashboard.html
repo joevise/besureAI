@@ -22,6 +22,7 @@
   --accent-glow:rgba(255,122,26,0.4);
   --green:#34d399;
   --red:#f87171;
+  --grey:#6b7280;
   --radius:14px;
   --font:'Space Grotesk',-apple-system,'PingFang SC','Noto Sans SC',sans-serif;
   --mono:'JetBrains Mono',monospace;
@@ -56,6 +57,56 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 .login-box button:active{transform:scale(0.98)}
 .login-box button:disabled{opacity:0.5}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* === Detail Tabs === */
+.detail-tabs{
+  display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.detail-tab{
+  padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;
+  color:var(--text2);border-bottom:2px solid transparent;transition:all .15s;
+}
+.detail-tab:hover{color:var(--text)}
+.detail-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* === Entry Status Badge (entry-level) === */
+.entry-status-badge{
+  font-size:9px;padding:2px 7px;border-radius:5px;font-weight:600;
+  text-transform:uppercase;letter-spacing:0.04em;margin-left:6px;
+}
+.entry-status-badge.active{background:rgba(52,211,153,0.12);color:var(--green)}
+.entry-status-badge.superseded{background:rgba(107,114,128,0.15);color:var(--grey)}
+.entry-status-badge.expired{background:rgba(248,113,113,0.12);color:var(--red)}
+.entry-status-badge.archived{background:rgba(107,114,128,0.15);color:var(--grey)}
+
+/* === Entry Links === */
+.entry-links{
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--border);
+  display:flex;flex-wrap:wrap;gap:6px;
+}
+.entry-link{
+  font-size:11px;font-family:var(--mono);
+  background:var(--surface3);padding:3px 8px;border-radius:6px;
+  color:var(--accent);cursor:pointer;text-decoration:none;
+  transition:background .15s;
+}
+.entry-link:hover{background:var(--accent-dim)}
+.entry-expiry{
+  margin-top:4px;font-size:11px;color:var(--text3);font-family:var(--mono);
+}
+
+/* === Config Card === */
+.config-section{
+  padding:20px 24px;
+}
+.config-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:16px;margin-bottom:10px;
+}
+.config-key{
+  font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600;
+}
+.config-value{font-size:14px;color:var(--text);margin-top:4px}
 
 /* === App Layout === */
 #mainApp{display:none;width:100%;height:100%}
@@ -208,6 +259,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   display:flex;transition:border-color .15s;
 }
 .entry:hover{border-color:var(--border2)}
+.entry.inactive{opacity:0.4}
 .entry-bar{width:3px;flex-shrink:0;border-radius:var(--radius) 0 0 var(--radius)}
 .entry-bar.milestone{background:var(--green)}
 .entry-bar.decision{background:var(--accent)}
@@ -215,6 +267,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 .entry-bar.blocker{background:var(--red)}
 .entry-bar.note{background:var(--text3)}
 .entry-bar.init{background:var(--text3)}
+.entry-bar.config{background:#a78bfa}
 .entry-body{padding:14px 16px;flex:1}
 .entry-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .entry-type{
@@ -226,6 +279,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 .entry-type.blocker{color:var(--red)}
 .entry-type.note{color:var(--text2)}
 .entry-type.init{color:var(--text2)}
+.entry-type.config{color:#a78bfa}
 .entry-date{font-size:11px;color:var(--text3);font-family:var(--mono)}
 .entry-content{font-size:14px;line-height:1.65;color:var(--text)}
 
@@ -290,6 +344,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   .detail-header{padding:16px 16px 12px;flex-direction:column}
   .timeline{padding:16px 16px 80px}
   .topbar{padding:8px 16px}
+  .config-section{padding:16px}
 }
 </style>
 </head>
@@ -312,7 +367,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.2.0</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.3.0</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -390,7 +445,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 <script>
 let SESSION_TOKEN=sessionStorage.getItem('besure_session')||null;
 let currentCtx=null,contexts=[];
-const TYPE_ICONS={milestone:'🎯',decision:'⚡',progress:'✅',blocker:'🚫',note:'📌',init:'🚀'};
+let currentEntries=[];
+let activeTab='timeline';
+const TYPE_ICONS={milestone:'🎯',decision:'⚡',progress:'✅',blocker:'🚫',note:'📌',init:'🚀',config:'⚙️'};
 
 async function api(path,opts={}){
   const headers=opts.headers||{};
@@ -501,8 +558,10 @@ async function selectCtx(id){
   try{
     const res=await api(`/api/contexts/${id}/log`);
     const entries=res.data||[];
+    currentEntries=entries;
     const ctx=contexts.find(c=>c.id===id);
     currentCtx=ctx;
+    activeTab='timeline';
     renderSidebar();
     renderDetail(ctx,entries);
     // Mobile: slide to detail view (full screen)
@@ -510,21 +569,76 @@ async function selectCtx(id){
   }catch(e){console.error(e)}
 }
 
+function switchTab(tab){
+  activeTab=tab;
+  renderDetail(currentCtx,currentEntries);
+}
+
+function selectEntryLink(targetId){
+  // Find the linked entry and scroll to it or show alert
+  if(currentCtx){
+    // Switch to timeline tab first
+    activeTab='timeline';
+    renderDetail(currentCtx,currentEntries);
+    // Highlight logic could be added here
+  }
+}
+
 function renderDetail(ctx,entries){
   const main=document.getElementById('mainContent');
   if(!ctx){main.innerHTML='<div class="empty"><div class="logo">🐉</div><p>Select a context</p></div>';return}
-  let entriesHtml=entries.length?entries.map((e,i)=>`
-    <div class="entry stagger" style="animation-delay:${i*0.04}s">
+
+  // Build entries HTML
+  let entriesHtml=entries.length?entries.map((e,i)=>{
+    let isActive=(e.status||'active')==='active';
+    let inactiveClass=isActive?'':' inactive';
+    let statusBadgeHtml=e.status&&e.status!=='active'
+      ?`<span class="entry-status-badge ${e.status}">${e.status}</span>`:'';
+    let linksHtml='';
+    if(e.links&&e.links.length>0){
+      linksHtml='<div class="entry-links">🔗 ';
+      linksHtml+=e.links.map(l=>`<span class="entry-link" onclick="selectEntryLink('${esc(l.target_id)}')">${esc(l.relation)}: ${esc(l.target_id)}</span>`).join(' ');
+      linksHtml+='</div>';
+    }
+    let expiryHtml='';
+    if(e.valid_until){
+      expiryHtml=`<div class="entry-expiry">⏰ expires: ${esc(e.valid_until)}</div>`;
+    }
+    return `
+    <div class="entry stagger${inactiveClass}" style="animation-delay:${i*0.04}s">
       <div class="entry-bar ${e.entry_type}"></div>
       <div class="entry-body">
         <div class="entry-top">
-          <span class="entry-type ${e.entry_type}">${TYPE_ICONS[e.entry_type]||'📝'} ${e.entry_type}</span>
+          <span class="entry-type ${e.entry_type}">${TYPE_ICONS[e.entry_type]||'📝'} ${e.entry_type}${statusBadgeHtml}</span>
           <span class="entry-date">${esc(e.date)}</span>
         </div>
         <div class="entry-content">${esc(e.content)}</div>
+        ${linksHtml}
+        ${expiryHtml}
       </div>
+    </div>`;
+  }).join(''):'<div style="padding:24px;text-align:center;color:var(--text3)">No entries yet</div>';
+
+  // Build config entries HTML
+  let configEntries=entries.filter(e=>e.entry_type==='config');
+  let configHtml=configEntries.length?configEntries.map(e=>{
+    let parts=e.content.split(/:(.*)/s);
+    let key=parts[0]?parts[0].trim():'?';
+    let val=parts[1]?parts[1].trim():'';
+    return `<div class="config-card"><div class="config-key">${esc(key)}</div><div class="config-value">${esc(val)}</div></div>`;
+  }).join(''):'<div style="padding:24px;text-align:center;color:var(--text3)">No config entries</div>';
+
+  // Tabs
+  let tabsHtml=`
+    <div class="detail-tabs">
+      <div class="detail-tab ${activeTab==='timeline'?'active':''}" onclick="switchTab('timeline')">📍 Timeline</div>
+      <div class="detail-tab ${activeTab==='config'?'active':''}" onclick="switchTab('config')">⚙️ Config (${configEntries.length})</div>
     </div>
-  `).join(''):'<div style="padding:24px;text-align:center;color:var(--text3)">No entries yet</div>';
+  `;
+
+  let contentHtml = activeTab==='config'
+    ? `<div class="config-section">${configHtml}</div>`
+    : `<div class="timeline">${entriesHtml}</div>`;
 
   main.innerHTML=`
     <div class="detail-header">
@@ -542,7 +656,8 @@ function renderDetail(ctx,entries){
         <button class="btn btn-sm" onclick="exportCtx('${ctx.id}')">Export</button>
       </div>
     </div>
-    <div class="timeline">${entriesHtml}</div>
+    ${tabsHtml}
+    ${contentHtml}
   `;
 }
 

@@ -3,4 +3,4 @@ pub mod vault;
 pub mod models;
 
 pub use vault::Vault;
-pub use models::{Context, Entry};
+pub use models::{Context, ContextStatus, Entry, EntryLink, EntryStatus, LinkRelation};
