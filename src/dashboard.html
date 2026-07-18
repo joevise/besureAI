@@ -61,29 +61,41 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 #mainApp{display:none;width:100%;height:100%}
 #mainApp.show{display:flex}
 
-/* Desktop: sidebar + main */
+/* Desktop: sidebar + main side by side */
 @media(min-width:769px){
   #mainApp{flex-direction:row}
-  .sidebar{width:300px;min-width:300px;max-width:300px}
+  .sidebar{width:300px;min-width:300px;max-width:300px;display:flex !important}
   .mobile-tabbar{display:none}
-  .main-area{flex:1}
+  .main-area{flex:1;display:flex !important}
+  .mobile-back{display:none}
+  .search-view{display:none}
 }
 
-/* Mobile: stacked with bottom tabbar */
+/* Mobile: full-screen views with slide transitions */
 @media(max-width:768px){
-  #mainApp{flex-direction:column}
+  #mainApp{flex-direction:column;position:relative;overflow:hidden}
   .sidebar{
-    width:100%;max-width:100%;
-    display:none;
+    width:100%;max-width:100%;flex:1;
+    position:absolute;inset:0;top:0;bottom:56px;
+    transform:translateX(0);
+    transition:transform .3s cubic-bezier(.4,0,.2,1);
+    z-index:2;
   }
-  .sidebar.mobile-show{display:flex;flex:1}
+  .sidebar.slide-out{transform:translateX(-100%)}
+  
   .main-area{
-    flex:1;display:none;
+    width:100%;max-width:100%;flex:1;
+    position:absolute;inset:0;top:0;bottom:56px;
+    transform:translateX(100%);
+    transition:transform .3s cubic-bezier(.4,0,.2,1);
+    z-index:1;
+    display:flex !important;
   }
-  .main-area.mobile-show{display:flex}
-  .mobile-tabbar{
-    display:flex;
-  }
+  .main-area.slide-in{transform:translateX(0);z-index:2}
+  
+  .mobile-tabbar{display:flex}
+  .mobile-back{display:none}
+  .main-area.slide-in .mobile-back{display:flex}
 }
 
 /* === Sidebar === */
@@ -145,6 +157,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   padding:12px 14px;border-top:1px solid var(--border);
   display:flex;gap:8px;
 }
+
+/* === Mobile Back Button === */
+.mobile-back{
+  display:none;align-items:center;gap:6px;
+  padding:8px 14px;cursor:pointer;color:var(--accent);
+  font-size:14px;font-weight:500;
+}
+.mobile-back:active{opacity:0.6}
 
 /* === Buttons === */
 .btn{
@@ -311,7 +331,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Main -->
   <div class="main-area" id="mainArea">
     <div class="topbar">
-      <span>🔒 Encrypted · Local-first</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="mobile-back" onclick="mobileBack()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </div>
+        <span class="lock-info">🔒 Encrypted · Local-first</span>
+      </div>
       <span class="logout" style="cursor:pointer;color:var(--text2)" onclick="doLogout()">Logout</span>
     </div>
     <div id="mainContent" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
@@ -413,21 +439,32 @@ function hideLogin(){
   document.getElementById('mainApp').classList.add('show');
 }
 
-// === Mobile Views ===
+// === Mobile Navigation ===
 function mobileView(view){
   if(window.innerWidth>768)return;
   const sidebar=document.getElementById('sidebar');
   const mainArea=document.getElementById('mainArea');
   if(view==='list'){
-    sidebar.classList.add('mobile-show');mainArea.classList.remove('mobile-show');
+    sidebar.classList.remove('slide-out');
+    mainArea.classList.remove('slide-in');
     document.getElementById('tabList').classList.add('active');
     document.getElementById('tabDetail').classList.remove('active');
-  }else{
-    sidebar.classList.remove('mobile-show');mainArea.classList.add('mobile-show');
+  }else if(view==='detail'){
+    sidebar.classList.add('slide-out');
+    mainArea.classList.add('slide-in');
     document.getElementById('tabList').classList.remove('active');
     document.getElementById('tabDetail').classList.add('active');
   }
 }
+
+function mobileBack(){
+  // 返回列表页
+  mobileView('list');
+}
+
+// 点击上下文卡片 → 全屏切换到详情页
+function selectCtx(id){
+  // ... 数据加载逻辑同上，但加载完后触发全屏切换
 
 // === Data ===
 async function init(){
@@ -472,6 +509,7 @@ async function selectCtx(id){
     currentCtx=ctx;
     renderSidebar();
     renderDetail(ctx,entries);
+    // Mobile: slide to detail view (full screen)
     if(window.innerWidth<=768)mobileView('detail');
   }catch(e){console.error(e)}
 }
