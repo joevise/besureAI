@@ -2,9 +2,17 @@
 name = "besure"
 version = "0.2.0"
 edition = "2021"
-description = "貔貅记忆 Besure AI — Context Switch Memory System"
+description = "貔貅记忆 Besure AI — Context Switch Memory System. 本地优先多上下文记忆，端到端加密，CLI + MCP + REST API。"
 license = "MIT"
 authors = ["刘正阳（大Joe）"]
+repository = "https://github.com/joevise/besureAI"
+homepage = "https://github.com/joevise/besureAI"
+keywords = ["memory", "context", "mcp", "cli", "encryption"]
+categories = ["command-line-utilities", "database"]
+readme = "README.md"
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "besure"
