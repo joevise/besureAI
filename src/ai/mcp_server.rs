@@ -179,6 +179,81 @@ impl McpServer {
                     "required": ["id"]
                 }
             }),
+            json!({
+                "name": "besure_link",
+                "description": "给 entry 建立关联（因果/替代/引用等）",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {"type": "string", "description": "源 entry ID"},
+                        "target_id": {"type": "string", "description": "目标 entry/context ID"},
+                        "relation": {"type": "string", "description": "关系: caused_by/supersedes/related_to/ref_file/ref_commit/ref_url"}
+                    },
+                    "required": ["entry_id", "target_id"]
+                }
+            }),
+            json!({
+                "name": "besure_expire",
+                "description": "标记 entry 过期",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {"type": "string", "description": "entry ID"}
+                    },
+                    "required": ["entry_id"]
+                }
+            }),
+            json!({
+                "name": "besure_supersede",
+                "description": "标记旧 entry 被新 entry 替代",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "old_id": {"type": "string", "description": "旧 entry ID"},
+                        "new_id": {"type": "string", "description": "新 entry ID"}
+                    },
+                    "required": ["old_id", "new_id"]
+                }
+            }),
+            json!({
+                "name": "besure_config_set",
+                "description": "设置项目配置（仓库/服务器/密钥引用等）",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "key": {"type": "string", "description": "配置键名"},
+                        "value": {"type": "string", "description": "配置值"}
+                    },
+                    "required": ["key", "value"]
+                }
+            }),
+            json!({
+                "name": "besure_config_get",
+                "description": "读取项目配置",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "key": {"type": "string", "description": "配置键名"}
+                    },
+                    "required": ["key"]
+                }
+            }),
+            json!({
+                "name": "besure_config_list",
+                "description": "列出当前上下文的所有配置",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }),
+            json!({
+                "name": "besure_recall",
+                "description": "主动召回：返回即将过期/已过期/最近24h/被替代的记忆",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }),
         ]
     }
 
@@ -198,6 +273,13 @@ impl McpServer {
             "besure_create" => Self::tool_create(&args),
             "besure_switch" => Self::tool_switch(&args),
             "besure_export" => Self::tool_export(&args),
+            "besure_link" => Self::tool_link(&args),
+            "besure_expire" => Self::tool_expire(&args),
+            "besure_supersede" => Self::tool_supersede(&args),
+            "besure_config_set" => Self::tool_config_set(&args),
+            "besure_config_get" => Self::tool_config_get(&args),
+            "besure_config_list" => Self::tool_config_list(&args),
+            "besure_recall" => Self::tool_recall(&args),
             _ => Err(format!("unknown tool: {}", tool_name)),
         };
 
@@ -397,5 +479,170 @@ impl McpServer {
         vault.export_context(&ctx, &entries, &output_path).map_err(|e| e.to_string())?;
 
         Ok(format!("✓ Exported '{}' to {} ({} entries)", ctx.title, output, entries.len()))
+    }
+
+    fn tool_link(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let entry_id = args.get("entry_id").and_then(|i| i.as_str()).ok_or("missing 'entry_id'")?;
+        let target_id = args.get("target_id").and_then(|i| i.as_str()).ok_or("missing 'target_id'")?;
+        let relation_str = args.get("relation").and_then(|r| r.as_str()).unwrap_or("related_to");
+
+        let relation = relation_str.parse()
+            .map_err(|e: String| format!("invalid relation '{}': {}", relation_str, e))?;
+
+        let link = crate::storage::models::EntryLink { target_id: target_id.to_string(), relation };
+        let db = vault.database().map_err(|e| e.to_string())?;
+        db.add_entry_link(entry_id, &link).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ Linked {} → {} ({})", entry_id, target_id, relation_str))
+    }
+
+    fn tool_expire(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let entry_id = args.get("entry_id").and_then(|i| i.as_str()).ok_or("missing 'entry_id'")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let entry = db.get_entry(entry_id).map_err(|e| e.to_string())?
+            .ok_or(format!("entry '{}' not found", entry_id))?;
+
+        use crate::storage::models::EntryStatus;
+        db.update_entry_status(entry_id, &EntryStatus::Expired, None).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ Entry {} expired\n  content: {}", entry_id, &entry.content[..50.min(entry.content.len())]))
+    }
+
+    fn tool_supersede(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let old_id = args.get("old_id").and_then(|i| i.as_str()).ok_or("missing 'old_id'")?;
+        let new_id = args.get("new_id").and_then(|i| i.as_str()).ok_or("missing 'new_id'")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let old_entry = db.get_entry(old_id).map_err(|e| e.to_string())?
+            .ok_or(format!("old entry '{}' not found", old_id))?;
+        let new_entry = db.get_entry(new_id).map_err(|e| e.to_string())?
+            .ok_or(format!("new entry '{}' not found", new_id))?;
+
+        use crate::storage::models::{EntryStatus, EntryLink, LinkRelation};
+        db.update_entry_status(old_id, &EntryStatus::Superseded, Some(new_id)).map_err(|e| e.to_string())?;
+        db.add_entry_link(new_id, &EntryLink { target_id: old_id.to_string(), relation: LinkRelation::Supersedes }).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ {} superseded by {}\n  old: {}\n  new: {}", old_id, new_id,
+            &old_entry.content[..50.min(old_entry.content.len())],
+            &new_entry.content[..50.min(new_entry.content.len())]))
+    }
+
+    fn tool_config_set(args: &Value) -> Result<String, String> {
+        let mut vault = Self::get_vault()?;
+        let key = args.get("key").and_then(|k| k.as_str()).ok_or("missing 'key'")?;
+        let value = args.get("value").and_then(|v| v.as_str()).ok_or("missing 'value'")?;
+
+        let ctx_id = vault.current_context.as_ref()
+            .ok_or("No active context. Switch to a context first.")?;
+
+        let content = format!("{}: {}", key, value);
+        let entry = Entry::new(ctx_id, &content, "config");
+        let db = vault.database().map_err(|e| e.to_string())?;
+        db.add_entry(&entry).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ Config set: {} = {}", key, value))
+    }
+
+    fn tool_config_get(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let key = args.get("key").and_then(|k| k.as_str()).ok_or("missing 'key'")?;
+        let ctx_id = vault.current_context.as_ref()
+            .ok_or("No active context.")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let entries = db.list_entries(ctx_id).map_err(|e| e.to_string())?;
+
+        let prefix = format!("{}:", key);
+        let found: Vec<_> = entries.iter()
+            .filter(|e| e.entry_type == "config" && e.content.starts_with(&prefix))
+            .collect();
+
+        if found.is_empty() {
+            return Err(format!("Config '{}' not found", key));
+        }
+
+        let results: Vec<String> = found.iter()
+            .map(|e| e.content.strip_prefix(&prefix).unwrap_or(&e.content).trim().to_string())
+            .collect();
+        Ok(format!("{} = {}", key, results.join(", ")))
+    }
+
+    fn tool_config_list(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let ctx_id = vault.current_context.as_ref()
+            .ok_or("No active context.")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let entries = db.list_entries(ctx_id).map_err(|e| e.to_string())?;
+
+        let configs: Vec<_> = entries.iter()
+            .filter(|e| e.entry_type == "config")
+            .collect();
+
+        if configs.is_empty() {
+            return Ok("No config entries.".to_string());
+        }
+
+        let lines: Vec<String> = configs.iter()
+            .map(|e| format!("  {}", e.content))
+            .collect();
+        Ok(format!("Config ({}):\n{}", ctx_id, lines.join("\n")))
+    }
+
+    fn tool_recall(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let ctx_id = vault.current_context.as_ref()
+            .ok_or("No active context.")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let entries = db.list_entries(ctx_id).map_err(|e| e.to_string())?;
+
+        use crate::storage::models::EntryStatus;
+        let now = chrono::Utc::now();
+        let recent_cutoff = (now - chrono::Duration::hours(24)).format("%Y-%m-%d %H:%M").to_string();
+
+        let mut recent = Vec::new();
+        let mut superseded = Vec::new();
+
+        for e in &entries {
+            match e.status {
+                EntryStatus::Active => {
+                    if e.date >= recent_cutoff {
+                        recent.push(e);
+                    }
+                }
+                EntryStatus::Superseded => {
+                    superseded.push(e);
+                }
+                _ => {}
+            }
+        }
+
+        let mut output = String::new();
+
+        if !recent.is_empty() {
+            output.push_str("📍 Recent (24h):\n");
+            for e in recent.iter().take(10) {
+                output.push_str(&format!("  [{}] {}\n", e.id, &e.content[..50.min(e.content.len())]));
+            }
+        }
+
+        if !superseded.is_empty() {
+            output.push_str("\n⬜ Superseded:\n");
+            for e in superseded.iter().take(5) {
+                let by = e.superseded_by.as_deref().unwrap_or("?");
+                output.push_str(&format!("  [{}] {} → {}\n", e.id, &e.content[..40.min(e.content.len())], by));
+            }
+        }
+
+        if output.is_empty() {
+            output = "Nothing to recall.".to_string();
+        }
+
+        Ok(output)
     }
 }
