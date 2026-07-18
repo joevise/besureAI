@@ -60,6 +60,7 @@ impl Database {
                 valid_until TEXT,
                 status      TEXT NOT NULL DEFAULT 'active',
                 superseded_by TEXT,
+                resolved    BOOLEAN NOT NULL DEFAULT 0,
                 FOREIGN KEY (context_id) REFERENCES contexts(id)
             );
 
@@ -80,6 +81,7 @@ impl Database {
             ("valid_until", "TEXT"),
             ("status", "TEXT NOT NULL DEFAULT 'active'"),
             ("superseded_by", "TEXT"),
+            ("resolved", "BOOLEAN NOT NULL DEFAULT 0"),
         ];
 
         for (col, def) in columns {
@@ -208,8 +210,8 @@ impl Database {
     pub fn add_entry(&self, entry: &Entry) -> Result<()> {
         self.conn.execute(
             r#"INSERT OR REPLACE INTO entries
-               (id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#,
+               (id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
             params![
                 entry.id,
                 entry.context_id,
@@ -222,6 +224,7 @@ impl Database {
                 entry.valid_until,
                 entry.status.to_string(),
                 entry.superseded_by,
+                entry.resolved,
             ],
         )?;
         self.touch_context(&entry.context_id)?;
@@ -231,7 +234,7 @@ impl Database {
     /// Get a single entry by id
     pub fn get_entry(&self, id: &str) -> Result<Option<Entry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by FROM entries WHERE id = ?1",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE id = ?1",
         )?;
 
         let mut rows = stmt.query(params![id])?;
@@ -245,7 +248,7 @@ impl Database {
     /// List all entries for a context (newest first)
     pub fn list_entries(&self, context_id: &str) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by FROM entries WHERE context_id = ?1 ORDER BY date DESC",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 ORDER BY date DESC",
         )?;
 
         let entries = stmt
@@ -259,7 +262,7 @@ impl Database {
     /// List entries by status within a context
     pub fn list_entries_by_status(&self, context_id: &str, status: &EntryStatus) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by FROM entries WHERE context_id = ?1 AND status = ?2 ORDER BY date DESC",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 AND status = ?2 ORDER BY date DESC",
         )?;
 
         let entries = stmt
@@ -273,7 +276,7 @@ impl Database {
     /// List entries that expire before a given date
     pub fn list_expiring_entries(&self, context_id: &str, before_date: &str) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by FROM entries WHERE context_id = ?1 AND status = 'active' AND valid_until IS NOT NULL AND valid_until < ?2 ORDER BY valid_until ASC",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 AND status = 'active' AND valid_until IS NOT NULL AND valid_until < ?2 ORDER BY valid_until ASC",
         )?;
 
         let entries = stmt
@@ -321,7 +324,7 @@ impl Database {
             r#"SELECT c.id, c.title, c.status, c.created, c.updated, c.tags, c.summary,
                       c.current_milestone, c.next_steps, c.related, c.shareable,
                       e.id, e.context_id, e.date, e.entry_type, e.content, e.tags,
-                      e.links, e.valid_from, e.valid_until, e.status, e.superseded_by
+                      e.links, e.valid_from, e.valid_until, e.status, e.superseded_by, e.resolved
                FROM entries e
                JOIN contexts c ON e.context_id = c.id
                WHERE e.content LIKE ?1 OR c.title LIKE ?1 OR c.summary LIKE ?1
@@ -392,6 +395,7 @@ impl Database {
             valid_until: row.get(offset + 8).ok(),
             status: status_str.parse().unwrap_or(EntryStatus::Active),
             superseded_by: row.get(offset + 10).ok(),
+            resolved: row.get::<_, bool>(offset + 11).unwrap_or(false),
         })
     }
 
@@ -406,6 +410,187 @@ impl Database {
         let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get(0))?;
         Ok(count)
     }
+
+    /// Update an entry's resolved flag
+    pub fn update_entry_resolved(&self, id: &str, resolved: bool) -> Result<()> {
+        self.conn.execute(
+            "UPDATE entries SET resolved = ?1 WHERE id = ?2",
+            params![resolved, id],
+        )?;
+        Ok(())
+    }
+
+    /// Unified query over entries with filters
+    pub fn query_entries(&self, filter: &QueryFilter) -> Result<Vec<Entry>> {
+        let mut sql = String::from(
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE 1=1",
+        );
+        let mut param_values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if !filter.all_contexts {
+            if let Some(ref cid) = filter.context_id {
+                sql.push_str(&format!(" AND context_id = ?{}", param_values.len() + 1));
+                param_values.push(Box::new(cid.clone()));
+            }
+        }
+        if let Some(ref from) = filter.from_date {
+            sql.push_str(&format!(" AND substr(date, 1, 10) >= ?{}", param_values.len() + 1));
+            param_values.push(Box::new(from.clone()));
+        }
+        if let Some(ref to) = filter.to_date {
+            sql.push_str(&format!(" AND substr(date, 1, 10) <= ?{}", param_values.len() + 1));
+            param_values.push(Box::new(to.clone()));
+        }
+        if !filter.entry_types.is_empty() {
+            let placeholders: Vec<String> = filter
+                .entry_types
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", param_values.len() + 1 + i))
+                .collect();
+            sql.push_str(&format!(" AND entry_type IN ({})", placeholders.join(", ")));
+            for t in &filter.entry_types {
+                param_values.push(Box::new(t.clone()));
+            }
+        }
+        if let Some(ref kw) = filter.keyword {
+            sql.push_str(&format!(" AND content LIKE ?{}", param_values.len() + 1));
+            param_values.push(Box::new(format!("%{}%", kw)));
+        }
+        if let Some(resolved) = filter.resolved {
+            sql.push_str(&format!(" AND resolved = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(resolved));
+        }
+
+        sql.push_str(" ORDER BY date DESC");
+        sql.push_str(&format!(" LIMIT ?{}", param_values.len() + 1));
+        param_values.push(Box::new(filter.limit as i64));
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let entries = stmt
+            .query_map(params_refs.as_slice(), |row| {
+                Database::row_to_entry_from_row(row, 0)
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(entries)
+    }
+
+    /// Append text to an entry's content (with timestamped separator)
+    pub fn append_entry_content(&self, id: &str, text: &str) -> Result<()> {
+        let entry = self
+            .get_entry(id)?
+            .context("entry not found for append")?;
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M").to_string();
+        let new_content = format!(
+            "{}\n\n---\n**[追加 {}]**\n{}",
+            entry.content, now, text
+        );
+        self.conn.execute(
+            "UPDATE entries SET content = ?1 WHERE id = ?2",
+            params![new_content, id],
+        )?;
+        Ok(())
+    }
+
+    /// Aggregate statistics: by context / type / status / resolved / recent activity
+    pub fn get_stats(&self) -> Result<Stats> {
+        let total_contexts = self.count_contexts()?;
+        let total_entries = self.count_entries()?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT c.title, COUNT(e.id) FROM contexts c LEFT JOIN entries e ON e.context_id = c.id GROUP BY c.id ORDER BY COUNT(e.id) DESC",
+        )?;
+        let by_context = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut stmt = self.conn.prepare(
+            "SELECT entry_type, COUNT(*) FROM entries GROUP BY entry_type ORDER BY COUNT(*) DESC",
+        )?;
+        let by_type = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut stmt = self.conn.prepare(
+            "SELECT status, COUNT(*) FROM entries GROUP BY status ORDER BY COUNT(*) DESC",
+        )?;
+        let by_status = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let resolved_count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM entries WHERE resolved = 1",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let seven_days_ago = (chrono::Utc::now() - chrono::Duration::days(7))
+            .format("%Y-%m-%d")
+            .to_string();
+        let mut stmt = self.conn.prepare(
+            "SELECT substr(date, 1, 10) AS d, COUNT(*) FROM entries WHERE substr(date, 1, 10) >= ?1 GROUP BY d ORDER BY d DESC",
+        )?;
+        let recent_activity = stmt
+            .query_map(params![seven_days_ago], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(Stats {
+            total_contexts,
+            total_entries,
+            by_context,
+            by_type,
+            by_status,
+            resolved_count,
+            recent_activity,
+        })
+    }
+}
+
+/// Filter for unified entry queries
+#[derive(Debug, Clone, Default)]
+pub struct QueryFilter {
+    /// None = current context (resolved by caller)
+    pub context_id: Option<String>,
+    /// true = search across all contexts
+    pub all_contexts: bool,
+    /// YYYY-MM-DD
+    pub from_date: Option<String>,
+    /// YYYY-MM-DD
+    pub to_date: Option<String>,
+    /// empty = all types
+    pub entry_types: Vec<String>,
+    pub keyword: Option<String>,
+    /// None = all, Some(true) = resolved only, Some(false) = unresolved only
+    pub resolved: Option<bool>,
+    pub limit: usize,
+}
+
+/// Aggregate statistics snapshot
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Stats {
+    pub total_contexts: i64,
+    pub total_entries: i64,
+    pub by_context: Vec<(String, i64)>,
+    pub by_type: Vec<(String, i64)>,
+    pub by_status: Vec<(String, i64)>,
+    pub resolved_count: i64,
+    pub recent_activity: Vec<(String, i64)>,
 }
 
 #[cfg(test)]
@@ -538,5 +723,203 @@ mod tests {
         // Migration already ran in open_memory, run again
         db.run_migrations().unwrap();
         db.run_migrations().unwrap();
+    }
+
+    fn make_entry(db: &Database, ctx_id: &str, content: &str, entry_type: &str, date: &str) -> Entry {
+        let mut e = Entry::new(ctx_id, content, entry_type);
+        e.id = format!("{}_{}_{}", ctx_id, entry_type, db.count_entries().unwrap());
+        e.date = date.to_string();
+        db.add_entry(&e).unwrap();
+        e
+    }
+
+    #[test]
+    fn test_query_by_date_range() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Query Date Test");
+        db.upsert_context(&ctx).unwrap();
+
+        make_entry(&db, &ctx.id, "early entry", "progress", "2026-07-01 10:00");
+        make_entry(&db, &ctx.id, "mid entry", "progress", "2026-07-10 10:00");
+        make_entry(&db, &ctx.id, "late entry", "progress", "2026-07-18 10:00");
+
+        let filter = QueryFilter {
+            context_id: Some(ctx.id.clone()),
+            from_date: Some("2026-07-05".to_string()),
+            to_date: Some("2026-07-15".to_string()),
+            limit: 20,
+            ..Default::default()
+        };
+        let results = db.query_entries(&filter).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "mid entry");
+
+        let filter2 = QueryFilter {
+            context_id: Some(ctx.id.clone()),
+            from_date: Some("2026-07-01".to_string()),
+            limit: 20,
+            ..Default::default()
+        };
+        assert_eq!(db.query_entries(&filter2).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_query_by_type() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Query Type Test");
+        db.upsert_context(&ctx).unwrap();
+
+        make_entry(&db, &ctx.id, "a progress", "progress", "2026-07-10 10:00");
+        make_entry(&db, &ctx.id, "a milestone", "milestone", "2026-07-11 10:00");
+        make_entry(&db, &ctx.id, "a lesson", "lesson", "2026-07-12 10:00");
+
+        let filter = QueryFilter {
+            context_id: Some(ctx.id.clone()),
+            entry_types: vec!["milestone".to_string(), "lesson".to_string()],
+            limit: 20,
+            ..Default::default()
+        };
+        let results = db.query_entries(&filter).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|e| e.entry_type == "milestone" || e.entry_type == "lesson"));
+    }
+
+    #[test]
+    fn test_query_by_keyword() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Query Keyword Test");
+        db.upsert_context(&ctx).unwrap();
+
+        make_entry(&db, &ctx.id, "Besure V3 shipped", "milestone", "2026-07-10 10:00");
+        make_entry(&db, &ctx.id, "unrelated note", "note", "2026-07-11 10:00");
+
+        let filter = QueryFilter {
+            context_id: Some(ctx.id.clone()),
+            keyword: Some("V3".to_string()),
+            limit: 20,
+            ..Default::default()
+        };
+        let results = db.query_entries(&filter).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "Besure V3 shipped");
+    }
+
+    #[test]
+    fn test_query_resolved_filter() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Query Resolved Test");
+        db.upsert_context(&ctx).unwrap();
+
+        let e1 = make_entry(&db, &ctx.id, "resolved one", "note", "2026-07-10 10:00");
+        make_entry(&db, &ctx.id, "open one", "note", "2026-07-11 10:00");
+        db.update_entry_resolved(&e1.id, true).unwrap();
+
+        let resolved_only = db.query_entries(&QueryFilter {
+            context_id: Some(ctx.id.clone()),
+            resolved: Some(true),
+            limit: 20,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(resolved_only.len(), 1);
+        assert_eq!(resolved_only[0].content, "resolved one");
+        assert!(resolved_only[0].resolved);
+
+        let unresolved_only = db.query_entries(&QueryFilter {
+            context_id: Some(ctx.id.clone()),
+            resolved: Some(false),
+            limit: 20,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(unresolved_only.len(), 1);
+        assert_eq!(unresolved_only[0].content, "open one");
+        assert!(!unresolved_only[0].resolved);
+    }
+
+    #[test]
+    fn test_resolve_entry() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Resolve Test");
+        db.upsert_context(&ctx).unwrap();
+
+        let e = make_entry(&db, &ctx.id, "to resolve", "blocker", "2026-07-10 10:00");
+        assert!(!e.resolved);
+
+        db.update_entry_resolved(&e.id, true).unwrap();
+        let fetched = db.get_entry(&e.id).unwrap().unwrap();
+        assert!(fetched.resolved);
+
+        db.update_entry_resolved(&e.id, false).unwrap();
+        let fetched = db.get_entry(&e.id).unwrap().unwrap();
+        assert!(!fetched.resolved);
+    }
+
+    #[test]
+    fn test_append_entry() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Append Test");
+        db.upsert_context(&ctx).unwrap();
+
+        let e = make_entry(&db, &ctx.id, "original content", "note", "2026-07-10 10:00");
+        db.append_entry_content(&e.id, "补充内容").unwrap();
+
+        let fetched = db.get_entry(&e.id).unwrap().unwrap();
+        assert!(fetched.content.starts_with("original content"));
+        assert!(fetched.content.contains("---"));
+        assert!(fetched.content.contains("**[追加 "));
+        assert!(fetched.content.contains("补充内容"));
+    }
+
+    #[test]
+    fn test_stats() {
+        let db = Database::open_memory().unwrap();
+        let ctx1 = Context::from_title("Stats A");
+        let ctx2 = Context::from_title("Stats B");
+        db.upsert_context(&ctx1).unwrap();
+        db.upsert_context(&ctx2).unwrap();
+
+        let today = chrono::Utc::now().format("%Y-%m-%d %H:%M").to_string();
+        let e1 = make_entry(&db, &ctx1.id, "a1", "progress", &today);
+        make_entry(&db, &ctx1.id, "a2", "milestone", &today);
+        make_entry(&db, &ctx2.id, "b1", "progress", &today);
+        db.update_entry_resolved(&e1.id, true).unwrap();
+
+        let stats = db.get_stats().unwrap();
+        assert_eq!(stats.total_contexts, 2);
+        assert_eq!(stats.total_entries, 3);
+        assert_eq!(stats.resolved_count, 1);
+        assert_eq!(stats.by_context.len(), 2);
+        assert_eq!(stats.by_context[0].1, 2); // ctx1 has most entries
+        assert!(stats.by_type.iter().any(|(t, c)| t == "progress" && *c == 2));
+        assert!(stats.by_type.iter().any(|(t, c)| t == "milestone" && *c == 1));
+        assert!(stats.by_status.iter().any(|(s, c)| s == "active" && *c == 3));
+        assert_eq!(stats.recent_activity.len(), 1);
+        assert_eq!(stats.recent_activity[0].1, 3);
+    }
+
+    #[test]
+    fn test_query_all_contexts() {
+        let db = Database::open_memory().unwrap();
+        let ctx1 = Context::from_title("All A");
+        let ctx2 = Context::from_title("All B");
+        db.upsert_context(&ctx1).unwrap();
+        db.upsert_context(&ctx2).unwrap();
+
+        make_entry(&db, &ctx1.id, "in a", "note", "2026-07-10 10:00");
+        make_entry(&db, &ctx2.id, "in b", "note", "2026-07-11 10:00");
+
+        let results = db.query_entries(&QueryFilter {
+            all_contexts: true,
+            limit: 20,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(results.len(), 2);
+
+        let scoped = db.query_entries(&QueryFilter {
+            context_id: Some(ctx1.id.clone()),
+            limit: 20,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(scoped.len(), 1);
+        assert_eq!(scoped[0].content, "in a");
     }
 }

@@ -254,6 +254,50 @@ impl McpServer {
                     "properties": {}
                 }
             }),
+            json!({
+                "name": "besure_query",
+                "description": "统一查询 entries，支持时间/类型/上下文/关键词/resolved 过滤。默认当前上下文最近20条。",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "context_id": {"type": "string", "description": "上下文 ID（不传则用当前）"},
+                        "all": {"type": "boolean", "description": "搜索所有上下文"},
+                        "from_date": {"type": "string", "description": "开始日期 YYYY-MM-DD"},
+                        "to_date": {"type": "string", "description": "结束日期 YYYY-MM-DD"},
+                        "last_days": {"type": "integer", "description": "最近N天"},
+                        "entry_types": {"type": "array", "items": {"type": "string"}, "description": "类型过滤"},
+                        "keyword": {"type": "string", "description": "关键词"},
+                        "resolved": {"type": "boolean", "description": "resolved 过滤: true/false"},
+                        "limit": {"type": "integer", "description": "返回条数，默认20"}
+                    }
+                }
+            }),
+            json!({
+                "name": "besure_resolve",
+                "description": "标记 entry 为 resolved",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"entry_id": {"type": "string"}},
+                    "required": ["entry_id"]
+                }
+            }),
+            json!({
+                "name": "besure_append",
+                "description": "追加内容到已有 entry",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {"type": "string"},
+                        "content": {"type": "string", "description": "追加的内容"}
+                    },
+                    "required": ["entry_id", "content"]
+                }
+            }),
+            json!({
+                "name": "besure_stats",
+                "description": "统计概览：按上下文/类型/状态/resolved 的分布",
+                "inputSchema": {"type": "object", "properties": {}}
+            }),
         ]
     }
 
@@ -280,6 +324,10 @@ impl McpServer {
             "besure_config_get" => Self::tool_config_get(&args),
             "besure_config_list" => Self::tool_config_list(&args),
             "besure_recall" => Self::tool_recall(&args),
+            "besure_query" => Self::tool_query(&args),
+            "besure_resolve" => Self::tool_resolve(&args),
+            "besure_append" => Self::tool_append(&args),
+            "besure_stats" => Self::tool_stats(&args),
             _ => Err(format!("unknown tool: {}", tool_name)),
         };
 
@@ -644,5 +692,139 @@ impl McpServer {
         }
 
         Ok(output)
+    }
+
+    fn tool_query(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let db = vault.database().map_err(|e| e.to_string())?;
+
+        let all = args.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
+        let context_id = if all {
+            None
+        } else if let Some(cid) = args.get("context_id").and_then(|c| c.as_str()) {
+            Some(cid.to_string())
+        } else {
+            Some(vault.current_context.as_ref()
+                .ok_or("No active context. Provide context_id or set all=true.")?
+                .clone())
+        };
+
+        let from_date = if let Some(days) = args.get("last_days").and_then(|d| d.as_i64()) {
+            Some((chrono::Utc::now() - chrono::Duration::days(days))
+                .format("%Y-%m-%d")
+                .to_string())
+        } else {
+            args.get("from_date").and_then(|d| d.as_str()).map(|s| s.to_string())
+        };
+
+        let entry_types: Vec<String> = args.get("entry_types")
+            .and_then(|t| serde_json::from_value(t.clone()).ok())
+            .unwrap_or_default();
+        let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(20) as usize;
+
+        let filter = crate::storage::QueryFilter {
+            context_id,
+            all_contexts: all,
+            from_date,
+            to_date: args.get("to_date").and_then(|d| d.as_str()).map(|s| s.to_string()),
+            entry_types,
+            keyword: args.get("keyword").and_then(|k| k.as_str()).map(|s| s.to_string()),
+            resolved: args.get("resolved").and_then(|r| r.as_bool()),
+            limit,
+        };
+
+        let entries = db.query_entries(&filter).map_err(|e| e.to_string())?;
+
+        let ctx_titles: std::collections::HashMap<String, String> = if all {
+            db.list_contexts().map_err(|e| e.to_string())?
+                .into_iter()
+                .map(|c| (c.id, c.title))
+                .collect()
+        } else {
+            std::collections::HashMap::new()
+        };
+
+        let mut lines = Vec::new();
+        for e in &entries {
+            let content: String = e.content.replace('\n', " ");
+            let truncated: String = content.chars().take(120).collect();
+            if all {
+                let ctx_name = ctx_titles.get(&e.context_id).map(|s| s.as_str()).unwrap_or(&e.context_id);
+                lines.push(format!(
+                    "{} | {} | {} | {} | resolved:{} | {}",
+                    e.id, ctx_name, e.date, e.entry_type, e.resolved, truncated
+                ));
+            } else {
+                lines.push(format!(
+                    "{} | {} | {} | resolved:{} | {}",
+                    e.id, e.date, e.entry_type, e.resolved, truncated
+                ));
+            }
+        }
+        lines.push(format!("Total: {} entries", entries.len()));
+        Ok(lines.join("\n"))
+    }
+
+    fn tool_resolve(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let entry_id = args.get("entry_id").and_then(|i| i.as_str()).ok_or("missing 'entry_id'")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        db.get_entry(entry_id).map_err(|e| e.to_string())?
+            .ok_or(format!("entry '{}' not found", entry_id))?;
+        db.update_entry_resolved(entry_id, true).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ Entry {} resolved", entry_id))
+    }
+
+    fn tool_append(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let entry_id = args.get("entry_id").and_then(|i| i.as_str()).ok_or("missing 'entry_id'")?;
+        let content = args.get("content").and_then(|c| c.as_str()).ok_or("missing 'content'")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        db.get_entry(entry_id).map_err(|e| e.to_string())?
+            .ok_or(format!("entry '{}' not found", entry_id))?;
+        db.append_entry_content(entry_id, content).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ Appended to {}", entry_id))
+    }
+
+    fn tool_stats(_args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let stats = db.get_stats().map_err(|e| e.to_string())?;
+
+        let mut out = format!(
+            "Besure AI — Stats\n\nTotal: {} contexts, {} entries\n\nBy Context:\n",
+            stats.total_contexts, stats.total_entries
+        );
+        for (title, count) in &stats.by_context {
+            out.push_str(&format!("  {}  {} entries\n", title, count));
+        }
+        out.push_str("\nBy Type:\n");
+        for (t, count) in &stats.by_type {
+            out.push_str(&format!("  {}  {}\n", t, count));
+        }
+        out.push_str("\nBy Status:\n");
+        for (s, count) in &stats.by_status {
+            out.push_str(&format!("  {}  {}\n", s, count));
+        }
+        let pct = if stats.total_entries > 0 {
+            (stats.resolved_count as f64 / stats.total_entries as f64 * 100.0).round() as i64
+        } else {
+            0
+        };
+        out.push_str(&format!(
+            "\nResolved: {} / {} ({}%)\n",
+            stats.resolved_count, stats.total_entries, pct
+        ));
+        if !stats.recent_activity.is_empty() {
+            out.push_str("\nRecent Activity (last 7 days):\n");
+            for (date, count) in &stats.recent_activity {
+                out.push_str(&format!("  {}: {} entries\n", date, count));
+            }
+        }
+        Ok(out)
     }
 }

@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.3.0",
+    version = "0.4.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -157,6 +157,62 @@ enum Commands {
     /// Recall entries that need attention (expiring, overdue, recent)
     #[command(name = "recall")]
     Recall,
+
+    /// Unified query over entries (time/type/keyword/resolved filters)
+    #[command(name = "query")]
+    Query {
+        /// Last N days (e.g. --last 7d)
+        #[arg(long)]
+        last: Option<String>,
+        /// From date YYYY-MM-DD
+        #[arg(long)]
+        from: Option<String>,
+        /// To date YYYY-MM-DD
+        #[arg(long)]
+        to: Option<String>,
+        /// Filter by entry type (repeatable)
+        #[arg(long = "type", action = ArgAction::Append)]
+        entry_types: Vec<String>,
+        /// Search across all contexts
+        #[arg(long, action = ArgAction::SetTrue)]
+        all: bool,
+        /// Query a specific context (no switch)
+        #[arg(long)]
+        context: Option<String>,
+        /// Keyword filter on content
+        #[arg(long)]
+        keyword: Option<String>,
+        /// Only unresolved entries
+        #[arg(long, action = ArgAction::SetTrue)]
+        unresolved: bool,
+        /// Only resolved entries
+        #[arg(long, action = ArgAction::SetTrue)]
+        resolved: bool,
+        /// Max results (default 20)
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
+
+    /// Mark an entry as resolved
+    #[command(name = "resolve")]
+    Resolve {
+        entry_id: String,
+    },
+
+    /// Append content to an existing entry
+    #[command(name = "append")]
+    Append {
+        entry_id: String,
+        /// Content text (alternative: --from-file)
+        content: Option<String>,
+        /// Read content from file
+        #[arg(long = "from-file")]
+        from_file: Option<String>,
+    },
+
+    /// Statistics overview
+    #[command(name = "stats")]
+    Stats,
 }
 
 #[derive(Subcommand)]
@@ -223,6 +279,21 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Recall => {
             cli::commands::cmd_recall()
+        }
+        Commands::Query { last, from, to, entry_types, all, context, keyword, unresolved, resolved, limit } => {
+            let args = cli::commands::QueryArgs {
+                last, from, to, entry_types, all, context, keyword, unresolved, resolved, limit,
+            };
+            cli::commands::cmd_query(&args)
+        }
+        Commands::Resolve { entry_id } => {
+            cli::commands::cmd_resolve(&entry_id)
+        }
+        Commands::Append { entry_id, content, from_file } => {
+            cli::commands::cmd_append(&entry_id, content.as_deref(), from_file.as_deref())
+        }
+        Commands::Stats => {
+            cli::commands::cmd_stats()
         }
     }
 }

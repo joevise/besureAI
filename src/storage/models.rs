@@ -165,6 +165,10 @@ pub struct Entry {
     /// If superseded, which entry replaced this one
     #[serde(default)]
     pub superseded_by: Option<String>,
+
+    /// Whether this entry has been marked as resolved/done
+    #[serde(default)]
+    pub resolved: bool,
 }
 
 impl Entry {
@@ -184,6 +188,7 @@ impl Entry {
             valid_until: None,
             status: EntryStatus::Active,
             superseded_by: None,
+            resolved: false,
         }
     }
 

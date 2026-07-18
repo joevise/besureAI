@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use tokio::sync::Mutex;
 use tokio::net::TcpListener;
 
-use crate::storage::{Vault, Context, Entry};
+use crate::storage::{Vault, Context, Entry, QueryFilter, Stats};
 use crate::dashboard::DASHBOARD_HTML;
 
 /// REST API + Dashboard Server
@@ -60,6 +60,25 @@ struct AuthBody {
     password: String,
 }
 
+#[derive(Deserialize)]
+struct QueryParams {
+    context_id: Option<String>,
+    all: Option<bool>,
+    from_date: Option<String>,
+    to_date: Option<String>,
+    last_days: Option<i64>,
+    /// Comma-separated entry types
+    entry_types: Option<String>,
+    keyword: Option<String>,
+    resolved: Option<bool>,
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct AppendBody {
+    content: String,
+}
+
 impl ApiServer {
     pub fn new(port: u16) -> Self {
         Self { port }
@@ -90,6 +109,10 @@ impl ApiServer {
             .route("/api/contexts/:id/export", get(export_context))
             .route("/api/search", get(search))
             .route("/api/status", get(status))
+            .route("/api/query", get(query_entries))
+            .route("/api/entries/:id/resolve", post(resolve_entry))
+            .route("/api/entries/:id/append", post(append_entry))
+            .route("/api/stats", get(get_stats_handler))
             .with_state(Arc::new(state));
 
         let addr = format!("0.0.0.0:{}", self.port);
@@ -376,4 +399,86 @@ async fn export_context(
         .header("Content-Type", "text/markdown; charset=utf-8")
         .body(md)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?)
+}
+
+// === V0.4 new handlers ===
+
+async fn query_entries(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(params): Query<QueryParams>,
+) -> Result<Json<ApiResponse<Vec<Entry>>>, (StatusCode, String)> {
+    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let all = params.all.unwrap_or(false);
+    let context_id = if all {
+        None
+    } else if let Some(ref cid) = params.context_id {
+        Some(cid.clone())
+    } else {
+        Some(vault.current_context.as_ref()
+            .ok_or((StatusCode::BAD_REQUEST, "No active context. Provide context_id or all=true".to_string()))?
+            .clone())
+    };
+
+    let from_date = if let Some(days) = params.last_days {
+        Some((chrono::Utc::now() - chrono::Duration::days(days))
+            .format("%Y-%m-%d")
+            .to_string())
+    } else {
+        params.from_date.clone()
+    };
+
+    let entry_types: Vec<String> = params.entry_types
+        .as_ref()
+        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    let filter = QueryFilter {
+        context_id,
+        all_contexts: all,
+        from_date,
+        to_date: params.to_date.clone(),
+        entry_types,
+        keyword: params.keyword.clone(),
+        resolved: params.resolved,
+        limit: params.limit.unwrap_or(20),
+    };
+
+    let entries = db.query_entries(&filter).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(entries), error: None }))
+}
+
+async fn resolve_entry(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
+    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    db.update_entry_resolved(&id, true).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
+}
+
+async fn append_entry(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<AppendBody>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
+    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    db.append_entry_content(&id, &body.content).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
+}
+
+async fn get_stats_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Stats>>, (StatusCode, String)> {
+    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let stats = db.get_stats().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(stats), error: None }))
 }

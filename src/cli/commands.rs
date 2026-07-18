@@ -724,6 +724,191 @@ pub fn cmd_recall() -> Result<()> {
     Ok(())
 }
 
+// === NEW: query command ===
+/// `besure query` — unified query with time/type/keyword/resolved filters
+pub struct QueryArgs {
+    pub last: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub entry_types: Vec<String>,
+    pub all: bool,
+    pub context: Option<String>,
+    pub keyword: Option<String>,
+    pub unresolved: bool,
+    pub resolved: bool,
+    pub limit: usize,
+}
+
+pub fn cmd_query(args: &QueryArgs) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    // Resolve context
+    let (context_id, all_contexts) = if args.all {
+        (None, true)
+    } else if let Some(ref q) = args.context {
+        let found = db.find_contexts_fuzzy(q)?;
+        if found.is_empty() {
+            bail!("No context found matching '{}'", q);
+        }
+        (Some(found[0].id.clone()), false)
+    } else {
+        let cid = vault
+            .current_context
+            .as_ref()
+            .context("No active context. Run 'besure switch' first or use --all.")?
+            .clone();
+        (Some(cid), false)
+    };
+
+    // Parse --last Nd → from_date
+    let from_date = if let Some(ref last) = args.last {
+        let days: i64 = last
+            .trim_end_matches('d')
+            .parse()
+            .with_context(|| format!("invalid --last value: '{}' (expected e.g. 7d)", last))?;
+        Some((chrono::Utc::now() - chrono::Duration::days(days))
+            .format("%Y-%m-%d")
+            .to_string())
+    } else {
+        args.from.clone()
+    };
+
+    let resolved = if args.resolved {
+        Some(true)
+    } else if args.unresolved {
+        Some(false)
+    } else {
+        None
+    };
+
+    let filter = besure_lib::storage::QueryFilter {
+        context_id,
+        all_contexts,
+        from_date,
+        to_date: args.to.clone(),
+        entry_types: args.entry_types.clone(),
+        keyword: args.keyword.clone(),
+        resolved,
+        limit: args.limit,
+    };
+
+    let entries = db.query_entries(&filter)?;
+
+    // Context id → title map (for --all display)
+    let ctx_titles: std::collections::HashMap<String, String> = if all_contexts {
+        db.list_contexts()?
+            .into_iter()
+            .map(|c| (c.id, c.title))
+            .collect()
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    for e in &entries {
+        let content: String = e.content.replace('\n', " ");
+        if all_contexts {
+            let ctx_name = ctx_titles.get(&e.context_id).map(|s| s.as_str()).unwrap_or(&e.context_id);
+            println!(
+                "{} | {} | {} | {} | resolved:{} | {}",
+                e.id, ctx_name, e.date, e.entry_type, e.resolved,
+                truncate(&content, 120)
+            );
+        } else {
+            println!(
+                "{} | {} | {} | resolved:{} | {}",
+                e.id, e.date, e.entry_type, e.resolved,
+                truncate(&content, 120)
+            );
+        }
+    }
+    println!("Total: {} entries", entries.len());
+    Ok(())
+}
+
+// === NEW: resolve command ===
+/// `besure resolve <entry_id>` — mark entry as resolved
+pub fn cmd_resolve(entry_id: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    db.get_entry(entry_id)?.context("entry not found")?;
+    db.update_entry_resolved(entry_id, true)?;
+
+    println!("✓ Entry {} resolved", entry_id);
+    Ok(())
+}
+
+// === NEW: append command ===
+/// `besure append <entry_id> [content]` — append content to an existing entry
+pub fn cmd_append(entry_id: &str, content: Option<&str>, from_file: Option<&str>) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    let final_content = if let Some(path) = from_file {
+        std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read file: {}", path))?
+    } else if let Some(c) = content {
+        c.to_string()
+    } else {
+        bail!("No content provided. Use positional text or --from-file <path>")
+    };
+
+    db.get_entry(entry_id)?.context("entry not found")?;
+    db.append_entry_content(entry_id, &final_content)?;
+
+    println!("✓ Appended to {}", entry_id);
+    Ok(())
+}
+
+// === NEW: stats command ===
+/// `besure stats` — global statistics overview
+pub fn cmd_stats() -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+    let stats = db.get_stats()?;
+
+    println!("Besure AI — Stats\n");
+    println!(
+        "Total: {} contexts, {} entries\n",
+        stats.total_contexts, stats.total_entries
+    );
+
+    println!("By Context:");
+    for (title, count) in &stats.by_context {
+        println!("  {:<28} {} entries", truncate(title, 28), count);
+    }
+
+    println!("\nBy Type:");
+    for (t, count) in &stats.by_type {
+        println!("  {:<12} {}", t, count);
+    }
+
+    println!("\nBy Status:");
+    for (s, count) in &stats.by_status {
+        println!("  {:<12} {}", s, count);
+    }
+
+    let pct = if stats.total_entries > 0 {
+        (stats.resolved_count as f64 / stats.total_entries as f64 * 100.0).round() as i64
+    } else {
+        0
+    };
+    println!(
+        "\nResolved: {} / {} ({}%)",
+        stats.resolved_count, stats.total_entries, pct
+    );
+
+    if !stats.recent_activity.is_empty() {
+        println!("\nRecent Activity (last 7 days):");
+        for (date, count) in &stats.recent_activity {
+            println!("  {}: {} entries", date, count);
+        }
+    }
+
+    Ok(())
+}
+
 // === config helpers ===
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
