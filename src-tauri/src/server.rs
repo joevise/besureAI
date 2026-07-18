@@ -1,3 +1,4 @@
+use anyhow as _;
 // 内嵌 HTTP 服务器 — 复用 besure core 的逻辑
 // 桌面 APP 自带 HTTP 服务，Tauri WebView 加载它
 
@@ -31,7 +32,7 @@ struct ApiResponse<T: Serialize> {
 
 pub async fn start_server(port: u16) -> anyhow::Result<()> {
     let state = AppState {
-        vault_root: besure::storage::Vault::default_root(),
+        vault_root: besure_lib::storage::Vault::default_root(),
         sessions: Arc::new(Mutex::new(HashSet::new())),
     };
 
@@ -55,7 +56,7 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
 }
 
 async fn dashboard() -> Html<&'static str> {
-    Html(besure::DASHBOARD_HTML)
+    Html(besure_lib::DASHBOARD_HTML)
 }
 
 async fn health() -> Json<ApiResponse<&'static str>> {
@@ -69,7 +70,7 @@ async fn auth(
     State(state): State<Arc<AppState>>,
     Json(body): Json<AuthBody>,
 ) -> Json<ApiResponse<serde_json::Value>> {
-    let vault = match besure::storage::Vault::open(Some(state.vault_root.clone())) {
+    let vault = match besure_lib::storage::Vault::open(Some(state.vault_root.clone())) {
         Ok(v) => v,
         Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("vault error".into()) }),
     };
@@ -89,7 +90,7 @@ async fn auth(
         None => return Json(ApiResponse { ok: false, data: None, error: Some("config error".into()) }),
     };
 
-    let mut crypto = besure::crypto::VaultCrypto::from_salt(salt.clone());
+    let mut crypto = besure_lib::crypto::VaultCrypto::from_salt(salt.clone());
     let ok = crypto.unlock_with_verify(&body.password, verify).unwrap_or(false);
 
     if !ok {
@@ -129,6 +130,7 @@ fn check_session(headers: &HeaderMap, sessions: &HashSet<String>) -> bool {
 
 fn gen_token() -> String {
     use rand::Rng;
+
     let bytes: [u8; 32] = rand::thread_rng().gen();
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
@@ -140,7 +142,7 @@ async fn list_contexts(State(state): State<Arc<AppState>>, headers: HeaderMap) -
     }
     drop(sessions);
 
-    let vault = match besure::storage::Vault::open(Some(state.vault_root.clone())) {
+    let vault = match besure_lib::storage::Vault::open(Some(state.vault_root.clone())) {
         Ok(v) => v, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }),
     };
     let db = match vault.database() { Ok(d) => d, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }) };
@@ -159,17 +161,17 @@ async fn create_context(State(state): State<Arc<AppState>>, headers: HeaderMap, 
     }
     drop(sessions);
 
-    let mut vault = match besure::storage::Vault::open(Some(state.vault_root.clone())) {
+    let mut vault = match besure_lib::storage::Vault::open(Some(state.vault_root.clone())) {
         Ok(v) => v, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }),
     };
-    let mut ctx = besure::storage::Context::from_title(&body.title);
+    let mut ctx = besure_lib::storage::Context::from_title(&body.title);
     ctx.tags = body.tags;
     ctx.summary = body.summary;
     if let Ok(db) = vault.database() {
         let _ = db.upsert_context(&ctx);
         let _ = vault.write_context_md(&ctx);
         let _ = vault.set_current(&ctx.id);
-        let entry = besure::storage::Entry::new(&ctx.id, &format!("Context initialized: {}", ctx.title), "init");
+        let entry = besure_lib::storage::Entry::new(&ctx.id, &format!("Context initialized: {}", ctx.title), "init");
         if let Ok(db) = vault.database() {
             let _ = db.add_entry(&entry);
         }
@@ -184,7 +186,7 @@ async fn get_log(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id
     }
     drop(sessions);
 
-    let vault = match besure::storage::Vault::open(Some(state.vault_root.clone())) {
+    let vault = match besure_lib::storage::Vault::open(Some(state.vault_root.clone())) {
         Ok(v) => v, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }),
     };
     let db = match vault.database() { Ok(d) => d, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }) };
@@ -204,10 +206,10 @@ async fn add_entry(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(
     drop(sessions);
 
     let et = if body.entry_type.is_empty() { "progress".to_string() } else { body.entry_type };
-    let vault = match besure::storage::Vault::open(Some(state.vault_root.clone())) {
+    let vault = match besure_lib::storage::Vault::open(Some(state.vault_root.clone())) {
         Ok(v) => v, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }),
     };
-    let entry = besure::storage::Entry::new(&id, &body.content, &et);
+    let entry = besure_lib::storage::Entry::new(&id, &body.content, &et);
     if let Ok(db) = vault.database() {
         let _ = db.add_entry(&entry);
         let _ = vault.write_entry_md(&entry);
@@ -225,7 +227,7 @@ async fn search(State(state): State<Arc<AppState>>, headers: HeaderMap, Query(qu
     }
     drop(sessions);
 
-    let vault = match besure::storage::Vault::open(Some(state.vault_root.clone())) {
+    let vault = match besure_lib::storage::Vault::open(Some(state.vault_root.clone())) {
         Ok(v) => v, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }),
     };
     let db = match vault.database() { Ok(d) => d, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }) };
@@ -244,7 +246,7 @@ async fn status(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<
     }
     drop(sessions);
 
-    let vault = match besure::storage::Vault::open(Some(state.vault_root.clone())) {
+    let vault = match besure_lib::storage::Vault::open(Some(state.vault_root.clone())) {
         Ok(v) => v, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }),
     };
     let db = match vault.database() { Ok(d) => d, Err(_) => return Json(ApiResponse { ok: false, data: None, error: Some("error".into()) }) };

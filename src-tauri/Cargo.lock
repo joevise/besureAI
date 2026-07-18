@@ -301,6 +301,7 @@ dependencies = [
 name = "besure-app"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "axum",
  "besure",
  "rand 0.8.7",
