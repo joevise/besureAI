@@ -234,8 +234,14 @@ fn require_auth(
 
 // === Handlers ===
 
-async fn dashboard() -> Html<&'static str> {
-    Html(DASHBOARD_HTML)
+async fn dashboard() -> axum::response::Response<String> {
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/html; charset=utf-8")
+        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+        .header("Pragma", "no-cache")
+        .body(DASHBOARD_HTML.to_string())
+        .unwrap()
 }
 
 async fn health() -> Json<ApiResponse<&'static str>> {

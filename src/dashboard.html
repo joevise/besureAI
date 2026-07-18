@@ -407,9 +407,10 @@ async function doLogin(){
   const pw=document.getElementById('loginPassword').value;
   if(!pw)return;
   document.getElementById('loginBtn').disabled=true;
-  document.getElementById('loginErr').textContent='';
+  document.getElementById('loginErr').textContent='Logging in...';
   try{
     const res=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    document.getElementById('loginErr').textContent='Response: '+res.status;
     const data=await res.json();
     if(data.ok&&data.data?.token){
       SESSION_TOKEN=data.data.token;
