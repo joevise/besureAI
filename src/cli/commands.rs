@@ -2,8 +2,8 @@ use anyhow::{bail, Context as AnyhowContext, Result};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use crate::ai::{EmbeddingProvider, embedding::EmbeddingConfig, Absorber, absorb::LlmConfig, VectorStore};
-use crate::storage::{Vault, Context, Entry};
+use besure_lib::ai::{EmbeddingProvider, embedding::EmbeddingConfig, Absorber, absorb::LlmConfig, VectorStore};
+use besure_lib::storage::{Vault, Context, Entry};
 
 fn read_password(prompt: &str) -> Result<String> {
     eprint!("{}", prompt);

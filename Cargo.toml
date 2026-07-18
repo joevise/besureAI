@@ -18,6 +18,10 @@ maintenance = { status = "actively-developed" }
 name = "besure"
 path = "src/main.rs"
 
+[lib]
+name = "besure_lib"
+path = "src/lib.rs"
+
 [dependencies]
 # 加密
 aes-gcm = "0.10"

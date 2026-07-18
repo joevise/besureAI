@@ -1,7 +1,7 @@
-mod crypto;
-mod storage;
-mod ai;
-mod dashboard;
+use besure_lib::crypto;
+use besure_lib::storage;
+use besure_lib::ai;
+use besure_lib::dashboard;
 mod cli;
 
 use clap::{ArgAction, Parser, Subcommand};
