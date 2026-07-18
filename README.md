@@ -2,6 +2,8 @@
 
 ### Local-first context memory for AI agents and humans.
 
+[English](README.md) | [中文](README_CN.md)
+
 > 貔貅 (Píxiū), a mythical beast that only takes in and never loses — symbolizing memory that, once stored, is never forgotten.
 
 **Rust-powered · Local-first · End-to-end encrypted · MCP-native · Single binary**
