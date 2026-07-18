@@ -134,14 +134,24 @@ pub fn cmd_switch_from_args(query: &str) -> Result<()> {
 }
 
 // === add ===
-pub fn cmd_add_from_args(content: &str, entry_type: &str) -> Result<()> {
+pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_type: &str) -> Result<()> {
     let vault = get_unlocked_vault()?;
     let context_id = vault
         .current_context
         .as_ref()
         .context("No active context. Run 'besure create' or 'besure switch' first.")?;
 
-    let entry = Entry::new(context_id, content, entry_type);
+    // Resolve content: --from-file takes priority, then positional arg
+    let final_content = if let Some(path) = from_file {
+        std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read file: {}", path))?
+    } else if let Some(c) = content {
+        c.to_string()
+    } else {
+        bail!("No content provided. Use positional text or --from-file <path>")
+    };
+
+    let entry = Entry::new(context_id, &final_content, entry_type);
 
     let db = vault.database()?;
     db.add_entry(&entry)?;
