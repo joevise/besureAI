@@ -5,415 +5,240 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>貔貅记忆 Besure AI</title>
 <style>
-:root {
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --surface2: #232733;
-  --border: #2e3340;
-  --text: #e4e6eb;
-  --text2: #9ca3af;
-  --accent: #6366f1;
-  --accent2: #818cf8;
-  --green: #10b981;
-  --amber: #f59e0b;
-  --red: #ef4444;
-  --radius: 10px;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
-}
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#232733;--border:#2e3340;--text:#e4e6eb;--text2:#9ca3af;--accent:#6366f1;--accent2:#818cf8;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--radius:10px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden}
+
+/* === Login === */
+.login-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200}
+.login-box{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:40px;width:380px;text-align:center}
+.login-box .dragon{font-size:48px;margin-bottom:8px}
+.login-box h2{font-size:20px;font-weight:700;margin-bottom:4px}
+.login-box .sub{font-size:13px;color:var(--text2);margin-bottom:24px}
+.login-box input{width:100%;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:15px;outline:none;margin-bottom:12px}
+.login-box input:focus{border-color:var(--accent)}
+.login-box .err{color:var(--red);font-size:12px;margin-bottom:8px;min-height:16px}
+.login-box button{width:100%;padding:12px;background:var(--accent);border:none;border-radius:10px;color:white;font-size:15px;font-weight:600;cursor:pointer}
+.login-box button:hover{background:var(--accent2)}
+.login-box button:disabled{opacity:0.5}
 
 /* === Sidebar === */
-.sidebar {
-  width: 280px;
-  min-width: 280px;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-}
-.sidebar-header {
-  padding: 20px 16px 12px;
-  border-bottom: 1px solid var(--border);
-}
-.sidebar-header h1 {
-  font-size: 16px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.sidebar-header .dragon { font-size: 20px; }
-.sidebar-header .ver { font-size: 11px; color: var(--text2); font-weight: 400; }
-.sidebar-stats {
-  padding: 8px 16px;
-  font-size: 12px;
-  color: var(--text2);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  gap: 12px;
-}
-.search-box {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.search-box input {
-  width: 100%;
-  padding: 8px 12px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 13px;
-  outline: none;
-}
-.search-box input:focus { border-color: var(--accent); }
-.search-box input::placeholder { color: var(--text2); }
-
-.ctx-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-.ctx-item {
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  margin-bottom: 4px;
-  transition: background 0.15s;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.ctx-item:hover { background: var(--surface2); }
-.ctx-item.active { background: var(--surface2); border-left: 3px solid var(--accent); padding-left: 9px; }
-.ctx-item .title { font-size: 14px; font-weight: 500; }
-.ctx-item .meta { font-size: 11px; color: var(--text2); display: flex; gap: 8px; align-items: center; }
-.ctx-item .tag {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--surface2);
-  color: var(--text2);
-}
-.ctx-item .marker { color: var(--accent); font-size: 12px; }
-.status-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 600;
-}
-.status-badge.active { background: rgba(16,185,129,0.15); color: var(--green); }
-.status-badge.paused { background: rgba(245,158,11,0.15); color: var(--amber); }
-.status-badge.completed { background: rgba(99,102,241,0.15); color: var(--accent2); }
-.status-badge.archived { background: rgba(156,163,175,0.15); color: var(--text2); }
-
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 8px;
-}
-.btn {
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface2);
-  color: var(--text);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.btn:hover { border-color: var(--accent); }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
-.btn-primary:hover { background: var(--accent2); }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-danger { color: var(--red); border-color: rgba(239,68,68,0.3); }
-.btn-danger:hover { background: rgba(239,68,68,0.1); border-color: var(--red); }
+.sidebar{width:280px;min-width:280px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sidebar-header{padding:20px 16px 12px;border-bottom:1px solid var(--border)}
+.sidebar-header h1{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.sidebar-header .dragon{font-size:20px}
+.sidebar-header .ver{font-size:11px;color:var(--text2);font-weight:400}
+.sidebar-stats{padding:8px 16px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);display:flex;gap:12px}
+.search-box{padding:12px 16px;border-bottom:1px solid var(--border)}
+.search-box input{width:100%;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none}
+.search-box input:focus{border-color:var(--accent)}
+.ctx-list{flex:1;overflow-y:auto;padding:8px}
+.ctx-item{padding:10px 12px;border-radius:var(--radius);cursor:pointer;margin-bottom:4px;transition:background .15s;display:flex;flex-direction:column;gap:2px}
+.ctx-item:hover{background:var(--surface2)}
+.ctx-item.active{background:var(--surface2);border-left:3px solid var(--accent);padding-left:9px}
+.ctx-item .title{font-size:14px;font-weight:500}
+.ctx-item .meta{font-size:11px;color:var(--text2);display:flex;gap:8px;align-items:center}
+.ctx-item .tag{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--surface2);color:var(--text2)}
+.status-badge{font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600}
+.status-badge.active{background:rgba(16,185,129,.15);color:var(--green)}
+.status-badge.paused{background:rgba(245,158,11,.15);color:var(--amber)}
+.status-badge.completed{background:rgba(99,102,241,.15);color:var(--accent2)}
+.status-badge.archived{background:rgba(156,163,175,.15);color:var(--text2)}
+.sidebar-footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px}
+.btn{padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--accent)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:white}
+.btn-primary:hover{background:var(--accent2)}
+.btn-sm{padding:4px 10px;font-size:12px}
 
 /* === Main === */
-.main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.main-header {
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-.main-header h2 { font-size: 20px; font-weight: 700; }
-.main-header .subtitle { font-size: 13px; color: var(--text2); margin-top: 4px; }
-.main-actions { display: flex; gap: 8px; }
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.main-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start}
+.main-header h2{font-size:20px;font-weight:700}
+.main-header .subtitle{font-size:13px;color:var(--text2);margin-top:4px}
+.main-actions{display:flex;gap:8px}
+.timeline{flex:1;overflow-y:auto;padding:20px 24px}
+.entry{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;display:flex;gap:14px;align-items:flex-start}
+.entry-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.entry-icon.milestone{background:rgba(16,185,129,.15)}.entry-icon.decision{background:rgba(99,102,241,.15)}.entry-icon.progress{background:rgba(56,189,248,.15)}.entry-icon.blocker{background:rgba(239,68,68,.15)}.entry-icon.note{background:rgba(245,158,11,.15)}.entry-icon.init{background:rgba(156,163,175,.15)}
+.entry-body{flex:1}
+.entry-type{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.entry-type.milestone{color:var(--green)}.entry-type.decision{color:var(--accent2)}.entry-type.progress{color:#38bdf8}.entry-type.blocker{color:var(--red)}.entry-type.note{color:var(--amber)}.entry-type.init{color:var(--text2)}
+.entry-date{font-size:11px;color:var(--text2)}
+.entry-content{font-size:14px;line-height:1.6;margin-top:6px}
 
-.timeline {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
-}
-.entry {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-  margin-bottom: 12px;
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-}
-.entry-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-.entry-icon.milestone { background: rgba(16,185,129,0.15); }
-.entry-icon.decision { background: rgba(99,102,241,0.15); }
-.entry-icon.progress { background: rgba(56,189,248,0.15); }
-.entry-icon.blocker { background: rgba(239,68,68,0.15); }
-.entry-icon.note { background: rgba(245,158,11,0.15); }
-.entry-icon.init { background: rgba(156,163,175,0.15); }
-.entry-body { flex: 1; }
-.entry-type {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.entry-type.milestone { color: var(--green); }
-.entry-type.decision { color: var(--accent2); }
-.entry-type.progress { color: #38bdf8; }
-.entry-type.blocker { color: var(--red); }
-.entry-type.note { color: var(--amber); }
-.entry-type.init { color: var(--text2); }
-.entry-date { font-size: 11px; color: var(--text2); }
-.entry-content { font-size: 14px; line-height: 1.6; margin-top: 6px; }
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text2);gap:12px}
+.empty .dragon{font-size:48px}
 
-/* === Empty state === */
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text2);
-  gap: 12px;
-}
-.empty .dragon { font-size: 48px; }
-.empty p { font-size: 14px; }
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:100}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:440px;max-width:90vw}
+.modal h3{font-size:18px;margin-bottom:16px}
+.modal-field{margin-bottom:14px}
+.modal-field label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
+.modal-field input,.modal-field textarea,.modal-field select{width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;font-family:inherit;resize:vertical}
+.modal-field input:focus,.modal-field textarea:focus,.modal-field select:focus{border-color:var(--accent)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 
-/* === Modal === */
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-.modal-overlay.show { display: flex; }
-.modal {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  width: 440px;
-  max-width: 90vw;
-}
-.modal h3 { font-size: 18px; margin-bottom: 16px; }
-.modal-field { margin-bottom: 14px; }
-.modal-field label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 4px; }
-.modal-field input, .modal-field textarea {
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 14px;
-  outline: none;
-  font-family: inherit;
-  resize: vertical;
-}
-.modal-field input:focus, .modal-field textarea:focus { border-color: var(--accent); }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.topbar{padding:8px 24px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text2)}
+.topbar .lock-info{display:flex;gap:8px;align-items:center}
+.logout-btn{color:var(--text2);cursor:pointer;font-size:12px;text-decoration:underline}
+.logout-btn:hover{color:var(--red)}
 
-/* === Search results === */
-.search-results {
-  padding: 20px 24px;
-}
-.search-result-item {
-  padding: 10px 14px;
-  border-left: 3px solid var(--accent);
-  margin-bottom: 8px;
-  background: var(--surface);
-  border-radius: 0 8px 8px 0;
-}
-.search-result-item .ctx { font-size: 12px; color: var(--text2); }
-.search-result-item .content { font-size: 14px; margin-top: 4px; }
-
-/* === Lock bar === */
-.lock-bar {
-  padding: 8px 24px;
-  background: rgba(245,158,11,0.1);
-  border-bottom: 1px solid rgba(245,158,11,0.2);
-  font-size: 12px;
-  color: var(--amber);
-  text-align: center;
-  display: none;
-}
-.lock-bar.show { display: block; }
-
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 </style>
 </head>
 <body>
 
-<div class="sidebar">
-  <div class="sidebar-header">
-    <h1><span class="dragon">🐉</span> 貔貅记忆 <span class="ver">v0.2.0</span></h1>
-  </div>
-  <div class="sidebar-stats" id="stats">
-    <span>📋 <span id="ctxCount">0</span> 上下文</span>
-    <span>📝 <span id="entryCount">0</span> 记录</span>
-  </div>
-  <div class="search-box">
-    <input type="text" id="searchInput" placeholder="🔍 搜索..." oninput="handleSearch()">
-  </div>
-  <div class="ctx-list" id="ctxList"></div>
-  <div class="sidebar-footer">
-    <button class="btn btn-primary" onclick="showCreateModal()">+ 新建</button>
-    <button class="btn" onclick="refresh()">↻ 刷新</button>
+<!-- Login Overlay -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="dragon">🐉</div>
+    <h2>貔貅记忆 Besure AI</h2>
+    <div class="sub">请输入主密码以解锁 Dashboard</div>
+    <input type="password" id="loginPassword" placeholder="主密码" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="err" id="loginErr"></div>
+    <button id="loginBtn" onclick="doLogin()">解锁</button>
   </div>
 </div>
 
-<div class="main">
-  <div class="lock-bar" id="lockBar">⚠️ Vault 已锁定，请先在终端运行 <code>besure unlock</code></div>
-  <div id="mainContent">
-    <div class="empty">
-      <div class="dragon">🐉</div>
-      <p>选择左侧上下文或创建新上下文</p>
+<!-- Main App (hidden until authed) -->
+<div style="display:none;width:100%;height:100%;flex:1" id="mainApp">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1><span class="dragon">🐉</span> 貔貅记忆 <span class="ver">v0.2.0</span></h1>
+    </div>
+    <div class="sidebar-stats" id="stats">
+      <span>📋 <span id="ctxCount">0</span> 上下文</span>
+      <span>📝 <span id="entryCount">0</span> 记录</span>
+    </div>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 搜索..." oninput="handleSearch()">
+    </div>
+    <div class="ctx-list" id="ctxList"></div>
+    <div class="sidebar-footer">
+      <button class="btn btn-primary" onclick="showCreateModal()">+ 新建</button>
+      <button class="btn" onclick="refresh()">↻ 刷新</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <span>🔒 加密保护中</span>
+      <span class="logout-btn" onclick="doLogout()">退出登录</span>
+    </div>
+    <div id="mainContent">
+      <div class="empty"><div class="dragon">🐉</div><p>选择左侧上下文或创建新上下文</p></div>
     </div>
   </div>
 </div>
 
-<!-- Create Modal -->
+<!-- Modals -->
 <div class="modal-overlay" id="createModal">
   <div class="modal">
     <h3>创建新上下文</h3>
-    <div class="modal-field">
-      <label>标题 *</label>
-      <input type="text" id="createTitle" placeholder="项目名称">
-    </div>
-    <div class="modal-field">
-      <label>标签（逗号分隔）</label>
-      <input type="text" id="createTags" placeholder="rust, mcp, saas">
-    </div>
-    <div class="modal-field">
-      <label>摘要</label>
-      <textarea id="createSummary" rows="2" placeholder="一句话描述"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn" onclick="hideModal('createModal')">取消</button>
-      <button class="btn btn-primary" onclick="doCreate()">创建</button>
-    </div>
+    <div class="modal-field"><label>标题 *</label><input type="text" id="createTitle" placeholder="项目名称"></div>
+    <div class="modal-field"><label>标签（逗号分隔）</label><input type="text" id="createTags" placeholder="rust, mcp, saas"></div>
+    <div class="modal-field"><label>摘要</label><textarea id="createSummary" rows="2" placeholder="一句话描述"></textarea></div>
+    <div class="modal-actions"><button class="btn" onclick="hideModal('createModal')">取消</button><button class="btn btn-primary" onclick="doCreate()">创建</button></div>
   </div>
 </div>
 
-<!-- Add Entry Modal -->
 <div class="modal-overlay" id="entryModal">
   <div class="modal">
     <h3>添加进展</h3>
-    <div class="modal-field">
-      <label>类型</label>
-      <select id="entryType" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
-        <option value="progress">进展</option>
-        <option value="milestone">里程碑</option>
-        <option value="decision">决策</option>
-        <option value="blocker">阻碍</option>
-        <option value="note">备注</option>
-      </select>
-    </div>
-    <div class="modal-field">
-      <label>内容</label>
-      <textarea id="entryContent" rows="3" placeholder="做了什么 / 决定了什么 / 发现了什么"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn" onclick="hideModal('entryModal')">取消</button>
-      <button class="btn btn-primary" onclick="doAddEntry()">添加</button>
-    </div>
+    <div class="modal-field"><label>类型</label><select id="entryType"><option value="progress">进展</option><option value="milestone">里程碑</option><option value="decision">决策</option><option value="blocker">阻碍</option><option value="note">备注</option></select></div>
+    <div class="modal-field"><label>内容</label><textarea id="entryContent" rows="3" placeholder="做了什么 / 决定了什么 / 发现了什么"></textarea></div>
+    <div class="modal-actions"><button class="btn" onclick="hideModal('entryModal')">取消</button><button class="btn btn-primary" onclick="doAddEntry()">添加</button></div>
   </div>
 </div>
 
 <script>
-const API = '';
-let currentCtx = null;
-let contexts = [];
-
-const TYPE_ICONS = {
-  milestone: '🎯', decision: '⚡', progress: '✅', blocker: '🚫', note: '📌', init: '🚀'
-};
+let SESSION_TOKEN = sessionStorage.getItem('besure_session') || null;
+let currentCtx = null, contexts = [];
+const TYPE_ICONS = {milestone:'🎯',decision:'⚡',progress:'✅',blocker:'🚫',note:'📌',init:'🚀'};
 
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, opts);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({error: res.statusText}));
-    throw new Error(err.error || 'Request failed');
-  }
+  const headers = opts.headers || {};
+  if (SESSION_TOKEN) headers['Authorization'] = 'Bearer ' + SESSION_TOKEN;
+  if (opts.body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(path, {...opts, headers});
+  if (res.status === 401) { showLogin(); throw new Error('未认证'); }
+  if (!res.ok) { const e = await res.json().catch(() => ({error: res.statusText})); throw new Error(e.error || 'Request failed'); }
   return res.json();
+}
+
+// === Auth ===
+async function doLogin() {
+  const pw = document.getElementById('loginPassword').value;
+  if (!pw) return;
+  document.getElementById('loginBtn').disabled = true;
+  document.getElementById('loginErr').textContent = '';
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: pw})
+    });
+    const data = await res.json();
+    if (data.ok && data.data?.token) {
+      SESSION_TOKEN = data.data.token;
+      sessionStorage.setItem('besure_session', SESSION_TOKEN);
+      hideLogin();
+      refresh();
+    } else {
+      document.getElementById('loginErr').textContent = data.error || '密码错误';
+    }
+  } catch(e) {
+    document.getElementById('loginErr').textContent = '连接失败: ' + e.message;
+  }
+  document.getElementById('loginBtn').disabled = false;
+}
+
+async function doLogout() {
+  try { await api('/api/auth/logout', {method: 'POST'}); } catch(e) {}
+  SESSION_TOKEN = null;
+  sessionStorage.removeItem('besure_session');
+  showLogin();
+}
+
+function showLogin() {
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginPassword').focus();
+}
+
+function hideLogin() {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'flex';
+}
+
+// === Init ===
+async function init() {
+  if (SESSION_TOKEN) {
+    try {
+      const res = await api('/api/auth/check');
+      if (res.ok) { hideLogin(); refresh(); return; }
+    } catch(e) {}
+  }
+  showLogin();
 }
 
 async function refresh() {
   try {
-    const [ctxRes, statusRes] = await Promise.all([
-      api('/api/contexts'),
-      api('/api/status'),
-    ]);
+    const [ctxRes, statusRes] = await Promise.all([api('/api/contexts'), api('/api/status')]);
     contexts = ctxRes.data || [];
     document.getElementById('ctxCount').textContent = statusRes.data?.contexts ?? 0;
     document.getElementById('entryCount').textContent = statusRes.data?.entries ?? 0;
     renderSidebar();
-  } catch(e) {
-    if (String(e).includes('locked') || String(e).includes('Failed')) {
-      document.getElementById('lockBar').classList.add('show');
-    }
-    console.error('refresh error:', e);
-  }
+  } catch(e) { console.error(e); }
 }
 
 function renderSidebar() {
   const list = document.getElementById('ctxList');
-  if (!contexts.length) {
-    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:13px;">还没有上下文<br>点击「新建」创建</div>';
-    return;
-  }
-  list.innerHTML = contexts.map(ctx => `
-    <div class="ctx-item ${currentCtx?.id === ctx.id ? 'active' : ''}" onclick="selectCtx('${ctx.id}')">
-      <div class="title">${esc(ctx.title)}</div>
-      <div class="meta">
-        <span class="status-badge ${ctx.status}">${ctx.status}</span>
-        ${(ctx.tags||[]).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
-      </div>
-    </div>
-  `).join('');
+  if (!contexts.length) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:13px;">还没有上下文<br>点击「新建」创建</div>'; return; }
+  list.innerHTML = contexts.map(ctx => `<div class="ctx-item ${currentCtx?.id===ctx.id?'active':''}" onclick="selectCtx('${ctx.id}')"><div class="title">${esc(ctx.title)}</div><div class="meta"><span class="status-badge ${ctx.status}">${ctx.status}</span>${(ctx.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>`).join('');
 }
 
 async function selectCtx(id) {
@@ -424,66 +249,21 @@ async function selectCtx(id) {
     currentCtx = ctx;
     renderSidebar();
     renderDetail(ctx, entries);
-  } catch(e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
 }
 
 function renderDetail(ctx, entries) {
   const main = document.getElementById('mainContent');
-  if (!ctx) {
-    main.innerHTML = '<div class="empty"><div class="dragon">🐉</div><p>选择左侧上下文</p></div>';
-    return;
-  }
-
-  let entriesHtml = '';
-  if (entries.length === 0) {
-    entriesHtml = '<div style="padding:20px;color:var(--text2);">还没有记录</div>';
-  } else {
-    entriesHtml = entries.map(e => `
-      <div class="entry">
-        <div class="entry-icon ${e.entry_type}">${TYPE_ICONS[e.entry_type] || '📝'}</div>
-        <div class="entry-body">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span class="entry-type ${e.entry_type}">${e.entry_type}</span>
-            <span class="entry-date">${esc(e.date)}</span>
-          </div>
-          <div class="entry-content">${esc(e.content)}</div>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  main.innerHTML = `
-    <div class="main-header">
-      <div>
-        <h2>${esc(ctx.title)}</h2>
-        <div class="subtitle">
-          ${ctx.id} · 
-          <span class="status-badge ${ctx.status}">${ctx.status}</span>
-          ${ctx.tags?.length ? ' · ' + ctx.tags.map(t=>`#${esc(t)}`).join(' ') : ''}
-          ${ctx.summary ? ' · ' + esc(ctx.summary) : ''}
-        </div>
-      </div>
-      <div class="main-actions">
-        <button class="btn btn-primary btn-sm" onclick="showEntryModal()">+ 添加进展</button>
-        <button class="btn btn-sm" onclick="exportCtx('${ctx.id}')">导出</button>
-      </div>
-    </div>
-    <div class="timeline">${entriesHtml}</div>
-  `;
+  if (!ctx) { main.innerHTML = '<div class="empty"><div class="dragon">🐉</div><p>选择左侧上下文</p></div>'; return; }
+  let entriesHtml = entries.length ? entries.map(e => `<div class="entry"><div class="entry-icon ${e.entry_type}">${TYPE_ICONS[e.entry_type]||'📝'}</div><div class="entry-body"><div style="display:flex;justify-content:space-between;align-items:center;"><span class="entry-type ${e.entry_type}">${e.entry_type}</span><span class="entry-date">${esc(e.date)}</span></div><div class="entry-content">${esc(e.content)}</div></div></div>`).join('') : '<div style="padding:20px;color:var(--text2);">还没有记录</div>';
+  main.innerHTML = `<div class="main-header"><div><h2>${esc(ctx.title)}</h2><div class="subtitle">${ctx.id} · <span class="status-badge ${ctx.status}">${ctx.status}</span> ${ctx.tags?.length?' · '+ctx.tags.map(t=>'#'+esc(t)).join(' '):''} ${ctx.summary?' · '+esc(ctx.summary):''}</div></div><div class="main-actions"><button class="btn btn-primary btn-sm" onclick="showEntryModal()">+ 添加进展</button><button class="btn btn-sm" onclick="exportCtx('${ctx.id}')">导出</button></div></div><div class="timeline">${entriesHtml}</div>`;
 }
 
-// === Search ===
 let searchTimer = null;
 function handleSearch() {
   clearTimeout(searchTimer);
   const q = document.getElementById('searchInput').value.trim();
-  if (!q) {
-    renderSidebar();
-    if (currentCtx) selectCtx(currentCtx.id);
-    return;
-  }
+  if (!q) { renderSidebar(); if (currentCtx) selectCtx(currentCtx.id); return; }
   searchTimer = setTimeout(() => doSearch(q), 300);
 }
 
@@ -492,28 +272,13 @@ async function doSearch(q) {
     const res = await api(`/api/search?q=${encodeURIComponent(q)}`);
     const results = res.data || [];
     const list = document.getElementById('ctxList');
-    if (!results.length) {
-      list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text2);font-size:13px;">没有"${esc(q)}"的结果</div>`;
-      return;
-    }
-    list.innerHTML = results.map(r => `
-      <div class="ctx-item" onclick="selectCtx('${r.context.id}')">
-        <div class="title">${esc(r.context.title)}</div>
-        <div class="meta">
-          <span class="status-badge ${r.context.status}">${r.context.status}</span>
-          <span style="color:var(--text2);font-size:11px;">${esc(r.entry.entry_type)} · ${esc(r.entry.content.slice(0,40))}...</span>
-        </div>
-      </div>
-    `).join('');
+    if (!results.length) { list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text2);font-size:13px;">没有"${esc(q)}"的结果</div>`; return; }
+    list.innerHTML = results.map(r => `<div class="ctx-item" onclick="selectCtx('${r.context.id}')"><div class="title">${esc(r.context.title)}</div><div class="meta"><span class="status-badge ${r.context.status}">${r.context.status}</span><span style="color:var(--text2);font-size:11px;">${esc(r.entry.entry_type)} · ${esc(r.entry.content.slice(0,40))}...</span></div></div>`).join('');
   } catch(e) { console.error(e); }
 }
 
-// === Modals ===
 function showCreateModal() { showModal('createModal'); }
-function showEntryModal() {
-  if (!currentCtx) { alert('请先选择一个上下文'); return; }
-  showModal('entryModal');
-}
+function showEntryModal() { if (!currentCtx) { alert('请先选择一个上下文'); return; } showModal('entryModal'); }
 function showModal(id) { document.getElementById(id).classList.add('show'); }
 function hideModal(id) { document.getElementById(id).classList.remove('show'); }
 
@@ -523,17 +288,11 @@ async function doCreate() {
   const tags = document.getElementById('createTags').value.split(',').map(s=>s.trim()).filter(Boolean);
   const summary = document.getElementById('createSummary').value.trim();
   try {
-    await api('/api/contexts', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({title, tags, summary})
-    });
+    await api('/api/contexts', {method:'POST',body:JSON.stringify({title,tags,summary})});
     hideModal('createModal');
-    document.getElementById('createTitle').value = '';
-    document.getElementById('createTags').value = '';
-    document.getElementById('createSummary').value = '';
+    document.getElementById('createTitle').value=''; document.getElementById('createTags').value=''; document.getElementById('createSummary').value='';
     await refresh();
-  } catch(e) { alert('创建失败: ' + e.message); }
+  } catch(e) { alert('创建失败: '+e.message); }
 }
 
 async function doAddEntry() {
@@ -541,31 +300,19 @@ async function doAddEntry() {
   if (!content) { alert('请输入内容'); return; }
   const entry_type = document.getElementById('entryType').value;
   try {
-    await api(`/api/contexts/${currentCtx.id}/entries`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({content, entry_type})
-    });
+    await api(`/api/contexts/${currentCtx.id}/entries`, {method:'POST',body:JSON.stringify({content,entry_type})});
     hideModal('entryModal');
-    document.getElementById('entryContent').value = '';
+    document.getElementById('entryContent').value='';
     await selectCtx(currentCtx.id);
     refresh();
-  } catch(e) { alert('添加失败: ' + e.message); }
+  } catch(e) { alert('添加失败: '+e.message); }
 }
 
-function exportCtx(id) {
-  window.open(`/api/contexts/${id}/export`, '_blank');
-}
+function exportCtx(id) { window.open(`/api/contexts/${id}/export`, '_blank'); }
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
 
-function esc(s) {
-  if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// Init
-refresh();
-// Auto-refresh every 30s
-setInterval(refresh, 30000);
+init();
+setInterval(() => { if (SESSION_TOKEN) refresh(); }, 30000);
 </script>
 </body>
 </html>
