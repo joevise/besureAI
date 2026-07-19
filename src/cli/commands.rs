@@ -740,6 +740,11 @@ pub struct QueryArgs {
 }
 
 pub fn cmd_query(args: &QueryArgs) -> Result<()> {
+    // Check --all-vaults first
+    if std::env::var("BESURE_QUERY_ALL_VAULTS").is_ok() {
+        return cmd_query_all_vaults(args);
+    }
+
     let vault = get_unlocked_vault()?;
     let db = vault.database()?;
 
@@ -906,6 +911,223 @@ pub fn cmd_stats() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+// === V0.5: Multi-vault commands ===
+
+/// `besure vaults` — list all vaults
+pub fn cmd_vaults() -> Result<()> {
+    if !Vault::can_access_all_vaults() {
+        bail!("Global vault access not enabled. Set BESURE_VAULTS_ALL=true to use this command.");
+    }
+
+    let vaults = Vault::list_vault_dirs();
+    if vaults.is_empty() {
+        println!("No vaults found under {}", Vault::vault_parent().display());
+        return Ok(());
+    }
+
+    let current_root = Vault::default_root();
+    println!("{:<3}{:<20} {:<30} {}", "", "VAULT", "PATH", "ENTRIES");
+    println!("{}", "-".repeat(80));
+    for (name, path) in &vaults {
+        let marker = if path == &current_root { "▶ " } else { "  " };
+        let entry_count = match Vault::open(Some(path.clone())) {
+            Ok(v) => v.database().ok().and_then(|db| db.count_entries().ok()).unwrap_or(0),
+            Err(_) => -1,
+        };
+        println!("{}{:<20} {:<30} {} entries", marker, name, truncate(&path.display().to_string(), 30), entry_count);
+    }
+    println!("\n{} vaults total", vaults.len());
+    Ok(())
+}
+
+/// `besure share <entry_id>` — push entry to shared vault
+pub fn cmd_share(entry_id: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    let entry = db.get_entry(entry_id)?.context("entry not found")?;
+    let source_vault_name = Vault::default_root()
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Ensure shared vault exists
+    let shared_path = Vault::shared_root();
+    if !Vault::exists(Some(shared_path.clone())) {
+        Vault::init(Some(shared_path.clone()), None)?;
+    }
+
+    let shared_vault = Vault::open(Some(shared_path.clone()))?;
+    let shared_db = shared_vault.database()?;
+
+    // Add entry to shared vault with source annotation
+    let mut shared_entry = entry.clone();
+    shared_entry.id = format!("shared_{}", entry.id);
+    shared_entry.context_id = format!("ctx_shared_from_{}", source_vault_name);
+
+    // Ensure context exists in shared vault
+    if shared_db.get_context(&shared_entry.context_id)?.is_none() {
+        let ctx = besure_lib::storage::Context::from_title(&format!("Shared from {}", source_vault_name));
+        // Override the auto-generated id
+        let mut ctx = ctx;
+        ctx.id = shared_entry.context_id.clone();
+        shared_db.upsert_context(&ctx)?;
+    }
+
+    // Add source tag
+    shared_entry.tags.push(format!("shared_from:{}", source_vault_name));
+
+    shared_db.add_entry(&shared_entry)?;
+
+    println!("✓ Shared entry {} to shared vault", entry_id);
+    println!("  shared_id: {}", shared_entry.id);
+    Ok(())
+}
+
+/// `besure share-context <context_id>` — push entire context to shared vault
+pub fn cmd_share_context(context_id: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    let source_vault_name = Vault::default_root()
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let ctx = db.get_context(context_id)?.context("context not found")?;
+    let entries = db.list_entries(context_id)?;
+
+    let shared_path = Vault::shared_root();
+    if !Vault::exists(Some(shared_path.clone())) {
+        Vault::init(Some(shared_path.clone()), None)?;
+    }
+
+    let shared_vault = Vault::open(Some(shared_path.clone()))?;
+    let shared_db = shared_vault.database()?;
+
+    // Copy context with modified id
+    let mut shared_ctx = ctx.clone();
+    shared_ctx.id = format!("ctx_shared_{}_{}", source_vault_name, context_id);
+    shared_db.upsert_context(&shared_ctx)?;
+
+    let entry_count = entries.len();
+    for mut entry in entries {
+        entry.id = format!("shared_{}", entry.id);
+        entry.context_id = shared_ctx.id.clone();
+        entry.tags.push(format!("shared_from:{}", source_vault_name));
+        shared_db.add_entry(&entry)?;
+    }
+
+    println!("✓ Shared context {} ({} entries) to shared vault", context_id, entry_count);
+    Ok(())
+}
+
+/// `besure shared` — view shared vault contents
+pub fn cmd_shared(keyword: Option<&str>, entry_types: &[String], limit: usize) -> Result<()> {
+    let shared_path = Vault::shared_root();
+    if !Vault::exists(Some(shared_path.clone())) {
+        println!("No shared vault found at {}", shared_path.display());
+        return Ok(());
+    }
+
+    let vault = Vault::open(Some(shared_path.clone()))?;
+    let db = vault.database()?;
+
+    let filter = besure_lib::storage::QueryFilter {
+        context_id: None,
+        all_contexts: true,
+        from_date: None,
+        to_date: None,
+        entry_types: entry_types.to_vec(),
+        keyword: keyword.map(|s| s.to_string()),
+        resolved: None,
+        limit,
+    };
+
+    let entries = db.query_entries(&filter)?;
+
+    if entries.is_empty() {
+        println!("No shared entries.");
+        return Ok(());
+    }
+
+    println!("📦 Shared Vault ({} entries)\n", entries.len());
+    for e in &entries {
+        let content: String = e.content.replace('\n', " ");
+        let source = e.tags.iter()
+            .find(|t| t.starts_with("shared_from:"))
+            .map(|t| t.strip_prefix("shared_from:").unwrap_or(""))
+            .unwrap_or("?");
+        println!("{} | from:{} | {} | {} | resolved:{} | {}",
+            e.id, source, e.date, e.entry_type, e.resolved, truncate(&content, 100));
+    }
+    Ok(())
+}
+
+/// Multi-vault query: query across all vaults
+pub fn cmd_query_all_vaults(args: &QueryArgs) -> Result<()> {
+    if !Vault::can_access_all_vaults() {
+        bail!("Global vault access not enabled. Set BESURE_VAULTS_ALL=true to use --all-vaults.");
+    }
+
+    let vaults = Vault::list_vault_dirs();
+    if vaults.is_empty() {
+        println!("No vaults found.");
+        return Ok(());
+    }
+
+    let mut total = 0;
+    for (name, path) in &vaults {
+        // Skip shared vault in all-vaults query (it's separate)
+        if name == "shared" { continue; }
+
+        match Vault::open(Some(path.clone())) {
+            Ok(v) => {
+                if let Ok(db) = v.database() {
+                    // Resolve context filter
+                    let context_id = if let Some(ref q) = args.context {
+                        db.find_contexts_fuzzy(q)?.first().map(|c| c.id.clone())
+                    } else {
+                        v.current_context.clone()
+                    };
+
+                    let from_date = if let Some(ref last) = args.last {
+                        let days: i64 = last.trim_end_matches('d').parse()
+                            .with_context(|| format!("invalid --last: '{}'", last))?;
+                        Some((chrono::Utc::now() - chrono::Duration::days(days)).format("%Y-%m-%d").to_string())
+                    } else { args.from.clone() };
+
+                    let resolved = if args.resolved { Some(true) } else if args.unresolved { Some(false) } else { None };
+
+                    let filter = besure_lib::storage::QueryFilter {
+                        context_id,
+                        all_contexts: args.all,
+                        from_date,
+                        to_date: args.to.clone(),
+                        entry_types: args.entry_types.clone(),
+                        keyword: args.keyword.clone(),
+                        resolved,
+                        limit: args.limit,
+                    };
+
+                    let entries = db.query_entries(&filter)?;
+                    if !entries.is_empty() {
+                        for e in &entries {
+                            let content: String = e.content.replace('\n', " ");
+                            println!("{} | vault:{} | {} | {} | resolved:{} | {}",
+                                e.id, name, e.date, e.entry_type, e.resolved, truncate(&content, 100));
+                        }
+                        total += entries.len();
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+    println!("Total: {} entries across all vaults", total);
     Ok(())
 }
 

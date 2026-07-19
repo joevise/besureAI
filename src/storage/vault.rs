@@ -1,4 +1,5 @@
 use anyhow::{bail, Context as AnyhowContext, Result};
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -46,11 +47,56 @@ pub struct Vault {
 }
 
 impl Vault {
-    /// 获取 vault 根目录（默认 ~/.besure/）
+    /// 获取 vault 根目录
+    /// 优先读 BESURE_VAULT 环境变量，fallback 到 ~/.besure/
     pub fn default_root() -> PathBuf {
+        if let Ok(path) = env::var("BESURE_VAULT") {
+            return PathBuf::from(path);
+        }
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".besure")
+    }
+
+    /// vault 父目录（用于 --all-vaults 扫描）
+    pub fn vault_parent() -> PathBuf {
+        if let Ok(path) = env::var("BESURE_VAULT_ROOT") {
+            return PathBuf::from(path);
+        }
+        let root = Self::default_root();
+        root.parent().unwrap_or(&root).to_path_buf()
+    }
+
+    /// shared vault 路径
+    pub fn shared_root() -> PathBuf {
+        if let Ok(path) = env::var("BESURE_SHARED_VAULT") {
+            return PathBuf::from(path);
+        }
+        Self::vault_parent().join("shared")
+    }
+
+    /// 列出所有 vault 目录（扫描 vault_parent 下有 .besure.config 的子目录）
+    pub fn list_vault_dirs() -> Vec<(String, PathBuf)> {
+        let parent = Self::vault_parent();
+        let mut vaults = Vec::new();
+        if let Ok(entries) = fs::read_dir(&parent) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.is_dir() && path.join(".besure.config").exists() {
+                    let name = path.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    vaults.push((name, path));
+                }
+            }
+        }
+        vaults.sort_by(|a, b| a.0.cmp(&b.0));
+        vaults
+    }
+
+    /// 检查是否有全局视角权限
+    pub fn can_access_all_vaults() -> bool {
+        env::var("BESURE_VAULTS_ALL").map(|v| v == "true" || v == "1").unwrap_or(false)
     }
 
     /// 初始化新 vault

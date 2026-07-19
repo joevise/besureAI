@@ -62,7 +62,7 @@ impl McpServer {
                     },
                     "serverInfo": {
                         "name": "besure",
-                        "version": "0.4.0"
+                        "version": "0.5.0"
                     }
                 }
             }),
@@ -298,6 +298,31 @@ impl McpServer {
                 "description": "统计概览：按上下文/类型/状态/resolved 的分布",
                 "inputSchema": {"type": "object", "properties": {}}
             }),
+            json!({
+                "name": "besure_vaults",
+                "description": "列出所有 vault（需要 BESURE_VAULTS_ALL=true）",
+                "inputSchema": {"type": "object", "properties": {}}
+            }),
+            json!({
+                "name": "besure_share",
+                "description": "推送 entry 到共享 vault",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"entry_id": {"type": "string"}},
+                    "required": ["entry_id"]
+                }
+            }),
+            json!({
+                "name": "besure_shared",
+                "description": "查看共享 vault 内容",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "keyword": {"type": "string"},
+                        "limit": {"type": "integer", "description": "默认20"}
+                    }
+                }
+            }),
         ]
     }
 
@@ -328,6 +353,9 @@ impl McpServer {
             "besure_resolve" => Self::tool_resolve(&args),
             "besure_append" => Self::tool_append(&args),
             "besure_stats" => Self::tool_stats(&args),
+            "besure_vaults" => Self::tool_vaults(&args),
+            "besure_share" => Self::tool_share(&args),
+            "besure_shared" => Self::tool_shared(&args),
             _ => Err(format!("unknown tool: {}", tool_name)),
         };
 
@@ -826,5 +854,95 @@ impl McpServer {
             }
         }
         Ok(out)
+    }
+
+    fn tool_vaults(_args: &Value) -> Result<String, String> {
+        if !crate::storage::Vault::can_access_all_vaults() {
+            return Err("Global vault access not enabled. Set BESURE_VAULTS_ALL=true".to_string());
+        }
+        let vaults = crate::storage::Vault::list_vault_dirs();
+        if vaults.is_empty() {
+            return Ok("No vaults found.".to_string());
+        }
+        let current = crate::storage::Vault::default_root();
+        let mut lines = Vec::new();
+        for (name, path) in &vaults {
+            let marker = if path == &current { "▶" } else { " " };
+            let count = crate::storage::Vault::open(Some(path.clone()))
+                .ok()
+                .and_then(|v| v.database().ok())
+                .and_then(|db| db.count_entries().ok())
+                .unwrap_or(0);
+            lines.push(format!("{} {} ({} entries)", marker, name, count));
+        }
+        lines.push(format!("\n{} vaults total", vaults.len()));
+        Ok(lines.join("\n"))
+    }
+
+    fn tool_share(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let entry_id = args.get("entry_id").and_then(|i| i.as_str()).ok_or("missing 'entry_id'")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let entry = db.get_entry(entry_id).map_err(|e| e.to_string())?
+            .ok_or(format!("entry '{}' not found", entry_id))?;
+
+        let source_name = crate::storage::Vault::default_root()
+            .file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or("unknown".to_string());
+
+        let shared_path = crate::storage::Vault::shared_root();
+        if !crate::storage::Vault::exists(Some(shared_path.clone())) {
+            crate::storage::Vault::init(Some(shared_path.clone()), None).map_err(|e| e.to_string())?;
+        }
+        let shared_vault = crate::storage::Vault::open(Some(shared_path.clone())).map_err(|e| e.to_string())?;
+        let shared_db = shared_vault.database().map_err(|e| e.to_string())?;
+
+        let mut shared_entry = entry.clone();
+        shared_entry.id = format!("shared_{}", entry.id);
+        shared_entry.context_id = format!("ctx_shared_from_{}", source_name);
+
+        if shared_db.get_context(&shared_entry.context_id).map_err(|e| e.to_string())?.is_none() {
+            let mut ctx = crate::storage::models::Context::from_title(&format!("Shared from {}", source_name));
+            ctx.id = shared_entry.context_id.clone();
+            shared_db.upsert_context(&ctx).map_err(|e| e.to_string())?;
+        }
+        shared_entry.tags.push(format!("shared_from:{}", source_name));
+        shared_db.add_entry(&shared_entry).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ Shared entry {} to shared vault", entry_id))
+    }
+
+    fn tool_shared(args: &Value) -> Result<String, String> {
+        let shared_path = crate::storage::Vault::shared_root();
+        if !crate::storage::Vault::exists(Some(shared_path.clone())) {
+            return Ok("No shared vault found.".to_string());
+        }
+        let vault = crate::storage::Vault::open(Some(shared_path.clone())).map_err(|e| e.to_string())?;
+        let db = vault.database().map_err(|e| e.to_string())?;
+
+        let keyword = args.get("keyword").and_then(|k| k.as_str());
+        let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(20) as usize;
+
+        let filter = crate::storage::QueryFilter {
+            context_id: None, all_contexts: true,
+            from_date: None, to_date: None,
+            entry_types: vec![],
+            keyword: keyword.map(|s| s.to_string()),
+            resolved: None, limit,
+        };
+        let entries = db.query_entries(&filter).map_err(|e| e.to_string())?;
+        if entries.is_empty() { return Ok("No shared entries.".to_string()); }
+
+        let mut lines = vec![format!("📦 Shared Vault ({} entries)", entries.len())];
+        for e in &entries {
+            let content: String = e.content.replace('\n', " ");
+            let source = e.tags.iter()
+                .find(|t| t.starts_with("shared_from:"))
+                .map(|t| t.strip_prefix("shared_from:").unwrap_or(""))
+                .unwrap_or("?");
+            lines.push(format!("{} | from:{} | {} | {} | {}", e.id, source, e.date, e.entry_type,
+                &content[..100.min(content.len())]));
+        }
+        Ok(lines.join("\n"))
     }
 }

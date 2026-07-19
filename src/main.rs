@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.4.0",
+    version = "0.5.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -191,6 +191,9 @@ enum Commands {
         /// Max results (default 20)
         #[arg(long, default_value = "20")]
         limit: usize,
+        /// Query across all vaults (requires BESURE_VAULTS_ALL=true)
+        #[arg(long, action = ArgAction::SetTrue)]
+        all_vaults: bool,
     },
 
     /// Mark an entry as resolved
@@ -213,6 +216,33 @@ enum Commands {
     /// Statistics overview
     #[command(name = "stats")]
     Stats,
+
+    /// List all vaults (requires BESURE_VAULTS_ALL=true)
+    #[command(name = "vaults")]
+    Vaults,
+
+    /// Share an entry to the shared vault
+    #[command(name = "share")]
+    Share {
+        entry_id: String,
+    },
+
+    /// Share an entire context to the shared vault
+    #[command(name = "share-context")]
+    ShareContext {
+        context_id: String,
+    },
+
+    /// View shared vault contents
+    #[command(name = "shared")]
+    Shared {
+        #[arg(long)]
+        keyword: Option<String>,
+        #[arg(long = "type", action = ArgAction::Append)]
+        entry_types: Vec<String>,
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand)]
@@ -280,7 +310,10 @@ fn main() -> anyhow::Result<()> {
         Commands::Recall => {
             cli::commands::cmd_recall()
         }
-        Commands::Query { last, from, to, entry_types, all, context, keyword, unresolved, resolved, limit } => {
+        Commands::Query { last, from, to, entry_types, all, context, keyword, unresolved, resolved, limit, all_vaults } => {
+            if all_vaults {
+                std::env::set_var("BESURE_QUERY_ALL_VAULTS", "1");
+            }
             let args = cli::commands::QueryArgs {
                 last, from, to, entry_types, all, context, keyword, unresolved, resolved, limit,
             };
@@ -294,6 +327,18 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Stats => {
             cli::commands::cmd_stats()
+        }
+        Commands::Vaults => {
+            cli::commands::cmd_vaults()
+        }
+        Commands::Share { entry_id } => {
+            cli::commands::cmd_share(&entry_id)
+        }
+        Commands::ShareContext { context_id } => {
+            cli::commands::cmd_share_context(&context_id)
+        }
+        Commands::Shared { keyword, entry_types, limit } => {
+            cli::commands::cmd_shared(keyword.as_deref(), &entry_types, limit)
         }
     }
 }
