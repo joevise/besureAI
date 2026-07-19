@@ -114,6 +114,33 @@ besure append <entry_id> --from-file supplement.md
 besure stats
 ```
 
+### V0.5 多 Vault 架构
+
+每个 Agent 默认有自己的 vault（物理隔离），通过环境变量配置：
+```bash
+# 环境变量
+BESURE_VAULT=~/.besure/joey/          # 当前 Agent 的 vault
+BESURE_VAULTS_ALL=true                 # 全局视角（只给主 Agent）
+BESURE_VAULT_ROOT=~/.besure/           # vault 父目录（扫描用）
+BESURE_SHARED_VAULT=~/.besure/shared/   # 共享 vault 路径
+```
+
+```bash
+# 列出所有 vault（需全局视角）
+besure vaults
+
+# 跨 vault 查询
+besure query --all-vaults
+
+# 推送到共享空间
+besure share <entry_id>
+besure share-context <context_id>
+
+# 查看共享内容
+besure shared
+besure shared --keyword "BTC"
+```
+
 ### 项目配置管理
 
 ```bash
