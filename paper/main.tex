@@ -13,19 +13,16 @@
 
 % === 字体（支持中文）===
 \usepackage{xeCJK}
-\setCJKmainfont{Noto Serif CJK SC}[
-  BoldFont = Noto Sans CJK SC Bold,
-  ItalicFont = Noto Serif CJK SC Light
-]
-\setCJKsansfont{Noto Sans CJK SC}
-\setCJKmonofont{Noto Sans Mono CJK SC}
+\setCJKmainfont{FandolSong}[BoldFont=FandolHei, ItalicFont=FandolKai]
+\setCJKsansfont{FandolHei}
+\setCJKmonofont{FandolFang}
 
 % 英文字体
 \usepackage{newtxtext,newtxmath}  % Times-like，学术标准
 
 % === 数学 ===
 \usepackage{amsmath,amsfonts}
-\let\Bbbk\relax  % 避免与 newtxmath 冲突
+\let\Bbbk\undefined
 \usepackage{amssymb}
 
 % === 图表 ===
@@ -352,44 +349,43 @@ Recall (主动召回) & 默认模式网络 (DMN) & Raichle et al. (2001) \\
 \centering
 \begin{tikzpicture}[scale=1.2]
 
-\def\num{8}
-\def\radius{3}
-
-% 绘制网格
+% 手动绘制网格圆
 \foreach \r in {0.6, 1.2, 1.8, 2.4, 3} {
-  \draw[gray!30] (0,0) \foreach \i [evaluate=\i as \angle using {90 - \i*360/\um}] in {1,...,\num} {
-    -- ({\r*cos(\angle)},{\r*sin(\angle)})
-  } -- cycle;
+  \draw[gray!30] (0,0) circle (\r);
 }
 
-% 绘制轴线
-\foreach \i [evaluate=\i as \angle using {90 - \i*360/\num}] in {0,...,7} {
-  \draw[gray!50] (0,0) -- ({\radius*cos(\angle)},{\radius*sin(\angle)});
+% 手动绘制轴线 (8个方向，每个45度)
+\foreach \a in {0, 45, 90, 135, 180, 225, 270, 315} {
+  \draw[gray!50] (0,0) -- ({3*cos(\a+90)},{3*sin(\a+90)});
 }
 
-% 本方案覆盖（满分）
-\foreach \i [evaluate=\i as \angle using {90 - \i*360/\num}] in {0,...,7} {
-  \fill[layer1color!50] ({2.7*cos(\angle)},{2.7*sin(\angle)}) circle (3pt);
+% 本方案数据点 (满分=2.7)
+\foreach \a in {0, 45, 90, 135, 180, 225, 270, 315} {
+  \fill[layer1color!50] ({2.7*cos(\a+90)},{2.7*sin(\a+90)}) circle (3pt);
 }
 
-% 现有方案覆盖（仅检索维度高）
-\foreach \i [evaluate=\i as \angle using {90 - \i*360/\num}] in {0,...,7} {
-  \fill[besuregold!50] ({0.9*cos(\angle)},{0.9*sin(\angle)}) circle (3pt);
+% 本方案连线
+\draw[layer1color!30, thick] plot[mark=*, mark options={fill=layer1color}] 
+  coordinates {(0,2.7) (1.91,1.91) (2.7,0) (1.91,-1.91) (0,-2.7) (-1.91,-1.91) (-2.7,0) (-1.91,1.91)} -- cycle;
+
+% 现有方案数据点 (低分=0.9)
+\foreach \a in {0, 45, 90, 135, 180, 225, 270, 315} {
+  \fill[besuregold!50] ({0.9*cos(\a+90)},{0.9*sin(\a+90)}) circle (3pt);
 }
 
-% 标签
-\foreach \i/\label [evaluate=\i as \angle using {90 - \i*360/\num}] in {
-  0/主体,
-  1/编码,
-  2/完整性,
-  3/上下文,
-  4/检索,
-  5/关联,
-  6/时效,
-  7/失效
-} {
-  \node[font=\footnotesize] at ({(\radius+0.6)*cos(\angle)},{(\radius+0.6)*sin(\angle)}) {\label};
-}
+% 现有方案连线
+\draw[besuregold!30, thick] plot[mark=*, mark options={fill=besuregold}] 
+  coordinates {(0,0.9) (0.64,0.64) (0.9,0) (0.64,-0.64) (0,-0.9) (-0.64,-0.64) (-0.9,0) (-0.64,0.64)} -- cycle;
+
+% 标签 (8个维度)
+\node[font=\footnotesize] at (0, 3.6) {主体};
+\node[font=\footnotesize] at (2.55, 2.55) {编码};
+\node[font=\footnotesize] at (3.6, 0) {完整性};
+\node[font=\footnotesize] at (2.55, -2.55) {上下文};
+\node[font=\footnotesize] at (0, -3.6) {检索};
+\node[font=\footnotesize] at (-2.55, -2.55) {关联};
+\node[font=\footnotesize] at (-3.6, 0) {时效};
+\node[font=\footnotesize] at (-2.55, 2.55) {失效};
 
 % Legend
 \node[font=\footnotesize, fill=layer1color!50, draw=layer1color, rounded corners=2pt] at (-3.8, -2.5) {本文方案};
