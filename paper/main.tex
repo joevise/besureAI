@@ -7,7 +7,6 @@
 \documentclass{article}
 
 % === 页面设置 ===
-\usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage[a4paper, margin=1in]{geometry}
 
@@ -15,7 +14,6 @@
 \usepackage{xeCJK}
 \setCJKmainfont{FandolSong}[BoldFont=FandolHei, ItalicFont=FandolKai]
 \setCJKsansfont{FandolHei}
-\setCJKmonofont{FandolFang}
 
 % 英文字体
 \usepackage{newtxtext,newtxmath}  % Times-like，学术标准
@@ -471,4 +469,7 @@ Recall (主动召回) & 默认模式网络 (DMN) & Raichle et al. (2001) \\
 本文识别并定义了 LLM Agent 的记忆写入触发问题，提出三层强制记忆注入机制、四态记忆生命周期模型和八维度评估框架。系统已开源：\url{https://github.com/joevise/besureAI}
 
 % ============================================================
-\bibliograph
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
