@@ -3,6 +3,9 @@
 \usepackage[T1]{fontenc}
 \usepackage[a4paper, margin=1in]{geometry}
 \usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\newtheorem{theorem}{Theorem}
+\newtheorem{definition}{Definition}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{multirow}
@@ -484,7 +487,7 @@ The system is implemented in Rust, compiled to a single binary for maximum porta
     agent/.style={rounded corners=4pt, draw=accent, fill=accent!10, minimum width=2.2cm, minimum height=0.8cm, font=\small, align=center},
     mcp/.style={rounded corners=6pt, draw=highlight, fill=highlight!10, minimum width=3.5cm, minimum height=1.5cm, font=\bfseries\small, align=center},
     vault/.style={rounded corners=4pt, draw=layer1color, fill=layer1color!10, minimum width=2.5cm, minimum height=0.8cm, font=\small, align=center},
-    dash/.style={rounded corners=4pt, draw=layer3color, fill=layer3color!10, minimum width=2.5cm, minimum height=0.8cm, font=\small, align=center},
+    {dashbox}/.style={rounded corners=4pt, draw=layer3color, fill=layer3color!10, minimum width=2.5cm, minimum height=0.8cm, font=\small, align=center},
     arrow/.style={-{Stealth[length=3mm, width=2mm]}, thick},
 ]
 
@@ -503,7 +506,7 @@ The system is implemented in Rust, compiled to a single binary for maximum porta
 \node[vault] (v4) at (10, -0.5) {Vault: William};
 
 % Dashboard
-\node[dash] (dash) at (5, -1.5) {Web Dashboard};
+\node[dashbox] ({dashbox}) at (5, -1.5) {Web Dashboard};
 
 % Arrows
 \draw[arrow] (a1) -- (mcp);
@@ -513,7 +516,7 @@ The system is implemented in Rust, compiled to a single binary for maximum porta
 \draw[arrow] (mcp) -- (v2);
 \draw[arrow] (mcp) -- (v3);
 \draw[arrow] (mcp) -- (v4);
-\draw[arrow] (mcp) -- (dash);
+\draw[arrow] (mcp) -- ({dashbox});
 
 \end{tikzpicture}
 \caption{Besure AI Context system architecture. Multiple agents interact with the MCP server, which routes operations to isolated vaults. The dashboard provides visual oversight.}
