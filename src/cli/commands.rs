@@ -1468,22 +1468,25 @@ pub fn cmd_setup(
             println!("  ✓ Updated agent metadata");
         }
     } else {
-        // Run init logic
-        cmd_init_from_args(encrypt)?;
-        // Write agent metadata
-        if agent_name.is_some() || agent_type.is_some() {
-            let config_path = vault.join(".besure.config");
-            let mut config: serde_json::Value = std::fs::read_to_string(&config_path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or(serde_json::json!({}));
-            if let Some(name) = agent_name {
-                config["agent_name"] = serde_json::Value::String(name.to_string());
-            }
-            if let Some(atype) = agent_type {
-                config["agent_type"] = serde_json::Value::String(atype.to_string());
-            }
-            std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+        // New vault: create directory + write complete config + init database
+        std::fs::create_dir_all(&vault)?;
+        let config = serde_json::json!({
+            "version": "0.1.0",
+            "encryption": encrypt,
+            "agent_name": agent_name.unwrap_or("Agent"),
+            "agent_type": agent_type.unwrap_or("unknown"),
+            "auto_lock_minutes": 5,
+            "salt": null,
+            "verify_token": null
+        });
+        let config_path = vault.join(".besure.config");
+        std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+
+        // Initialize database by opening the vault
+        let _vault = Vault::open(Some(vault.clone()))?;
+        println!("  ✓ Vault created at {}", vault.display());
+        if encrypt {
+            println!("  🔒 Encryption enabled");
         }
     }
     println!();
