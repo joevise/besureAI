@@ -68,6 +68,10 @@ fi
 
 echo ""
 echo "开始使用："
+echo "  besure setup --agent-name \"Joey\"   # 一键配置（推荐）"
+echo "  # ↑ 自动初始化 + 检测 Agent 配置 + 注入强制记忆规则"
+echo ""
+echo "  或手动："
 echo "  besure init --encrypt          # 初始化（设置主密码）"
 echo "  besure create \"我的项目\"       # 创建上下文"
 echo "  besure add \"完成了某件事\"      # 记录进展"
