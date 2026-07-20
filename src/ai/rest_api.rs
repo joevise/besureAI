@@ -113,6 +113,12 @@ impl ApiServer {
             .route("/api/entries/:id/resolve", post(resolve_entry))
             .route("/api/entries/:id/append", post(append_entry))
             .route("/api/stats", get(get_stats_handler))
+            // V0.5.5: multi-vault routes
+            .route("/api/vaults", get(list_all_vaults))
+            .route("/api/vaults/:id/contexts", get(get_vault_contexts))
+            .route("/api/vaults/:id/log", get(get_vault_log))
+            .route("/api/vaults/:id/stats", get(get_vault_stats))
+            .route("/api/vaults/:id/unlock", post(unlock_vault))
             .with_state(Arc::new(state));
 
         let addr = format!("0.0.0.0:{}", self.port);
@@ -481,4 +487,88 @@ async fn get_stats_handler(
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let stats = db.get_stats().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(stats), error: None }))
+}
+
+// === V0.5.5: Multi-vault handlers ===
+
+async fn list_all_vaults(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Vec<crate::storage::VaultInfo>>>, (StatusCode, String)> {
+    let infos = crate::storage::Vault::list_all_vaults_info();
+    Ok(Json(ApiResponse { ok: true, data: Some(infos), error: None }))
+}
+
+async fn get_vault_contexts(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<Context>>>, (StatusCode, String)> {
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(&id);
+    if !vault_path.exists() {
+        return Err((StatusCode::NOT_FOUND, format!("vault '{}' not found", id)));
+    }
+    let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let contexts = db.list_contexts().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(contexts), error: None }))
+}
+
+async fn get_vault_log(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<Entry>>>, (StatusCode, String)> {
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(&id);
+    let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Get entries from all contexts in this vault
+    let contexts = db.list_contexts().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let mut all_entries = Vec::new();
+    for ctx in &contexts {
+        if let Ok(entries) = db.list_entries(&ctx.id) {
+            all_entries.extend(entries);
+        }
+    }
+    // Sort by date desc
+    all_entries.sort_by(|a, b| b.date.cmp(&a.date));
+    Ok(Json(ApiResponse { ok: true, data: Some(all_entries), error: None }))
+}
+
+async fn get_vault_stats(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Stats>>, (StatusCode, String)> {
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(&id);
+    let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let stats = db.get_stats().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(stats), error: None }))
+}
+
+#[derive(Deserialize)]
+struct UnlockVaultBody {
+    password: String,
+}
+
+async fn unlock_vault(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<UnlockVaultBody>,
+) -> Result<Json<ApiResponse<bool>>, (StatusCode, String)> {
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(&id);
+    let mut vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if !vault.config.encryption {
+        return Ok(Json(ApiResponse { ok: true, data: Some(true), error: None }));
+    }
+    match vault.unlock(&body.password) {
+        Ok(true) => Ok(Json(ApiResponse { ok: true, data: Some(true), error: None })),
+        _ => Ok(Json(ApiResponse { ok: false, data: Some(false), error: Some("Wrong password".to_string()) })),
+    }
 }

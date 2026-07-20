@@ -62,7 +62,7 @@ impl McpServer {
                     },
                     "serverInfo": {
                         "name": "besure",
-                        "version": "0.5.1"
+                        "version": "0.5.5"
                     }
                 }
             }),

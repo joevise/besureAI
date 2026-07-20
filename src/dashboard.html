@@ -367,7 +367,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.5.1</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.5.5</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -447,7 +447,10 @@ let SESSION_TOKEN=sessionStorage.getItem('besure_session')||null;
 let currentCtx=null,contexts=[];
 let currentEntries=[];
 let activeTab='timeline';
-const TYPE_ICONS={milestone:'🎯',decision:'⚡',progress:'✅',blocker:'🚫',note:'📌',init:'🚀',config:'⚙️'};
+let allVaults=[];
+let currentVault=null;
+const TYPE_ICONS={milestone:'🎯',decision:'⚡',progress:'✅',blocker:'🚫',note:'📌',init:'🚀',config:'⚙️',lesson:'📖',question:'❓'};
+const AGENT_ICONS={openclaw:'🟢',cursor:'🔵',codex:'🟣',vscode:'🟡',custom:'⚪',unknown:'⚪'};
 
 async function api(path,opts={}){
   const headers=opts.headers||{};
@@ -522,36 +525,88 @@ function mobileBack(){
 // === Data ===
 async function init(){
   if(SESSION_TOKEN){
-    try{const res=await api('/api/auth/check');if(res.ok){hideLogin();refresh();return}}catch(e){}
+    try{const res=await api('/api/auth/check');if(res.ok){hideLogin();await refresh();return}}catch(e){}
   }
   showLogin();
 }
 
 async function refresh(){
   try{
-    const[ctxRes,statusRes]=await Promise.all([api('/api/contexts'),api('/api/status')]);
-    contexts=ctxRes.data||[];
-    document.getElementById('ctxCount').textContent=statusRes.data?.contexts??0;
-    document.getElementById('entryCount').textContent=statusRes.data?.entries??0;
+    // V0.5.5: Load all vaults first
+    const vaultsRes=await api('/api/vaults');
+    allVaults=vaultsRes.data||[];
+    
+    // Auto-select first vault if none selected
+    if(!currentVault&&allVaults.length>0){
+      // Find current vault (matching vault root) or pick first unlocked
+      currentVault=allVaults.find(v=>!v.locked)||allVaults[0];
+    }
+    
+    // Load current vault data
+    if(currentVault){
+      await loadVaultData(currentVault.id);
+    }
+    
+    // Update top stats
+    const totalEntries=allVaults.reduce((s,v)=>s+v.entry_count,0);
+    document.getElementById('ctxCount').textContent=allVaults.length;
+    document.getElementById('entryCount').textContent=totalEntries;
     renderSidebar();
   }catch(e){console.error(e)}
 }
 
+async function loadVaultData(vaultId){
+  try{
+    const ctxRes=await api(`/api/vaults/${vaultId}/contexts`);
+    contexts=ctxRes.data||[];
+    currentCtx=contexts.find(c=>c.id===currentCtx?.id)||contexts[0]||null;
+    if(currentCtx){
+      const logRes=await api(`/api/vaults/${vaultId}/log`);
+      currentEntries=logRes.data||[];
+    }else{
+      currentEntries=[];
+    }
+  }catch(e){console.error(e);contexts=[];currentEntries=[]}
+}
+
 function renderSidebar(){
   const list=document.getElementById('ctxList');
-  if(!contexts.length){
-    list.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No contexts yet.<br>Tap "+ New Context" to create one.</div>';
+  if(!allVaults.length){
+    list.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No vaults found.<br>Run <code>besure init</code></div>';
     return;
   }
-  list.innerHTML=contexts.map((ctx,i)=>`
-    <div class="ctx-item stagger ${currentCtx?.id===ctx.id?'active':''}" onclick="selectCtx('${ctx.id}')" style="animation-delay:${i*0.05}s">
-      <div class="title">${esc(ctx.title)}</div>
+  list.innerHTML=allVaults.map((v,i)=>{
+    let icon=AGENT_ICONS[v.agent_type]||'\u26AA';
+    let locked=v.locked?'\uD83D\uDD12 ':'';
+    let active=currentVault&&currentVault.id===v.id?'active':'';
+    return `
+    <div class="ctx-item stagger ${active}" onclick="selectVault('${v.id}')" style="animation-delay:${i*0.05}s">
+      <div class="title">${icon} ${locked}${esc(v.agent_name)}</div>
       <div class="meta">
-        <span class="status-badge ${ctx.status}">${ctx.status}</span>
-        ${(ctx.tags||[]).slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+        <span class="status-badge ${v.locked?'expired':'active'}">${esc(v.agent_type)}</span>
+        <span style="font-size:11px;color:var(--text3)">${v.entry_count} entries</span>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+}
+
+async function selectVault(id){
+  const vault=allVaults.find(v=>v.id===id);
+  if(!vault)return;
+  if(vault.locked){
+    const pw=prompt('Unlock '+vault.agent_name+':');
+    if(!pw)return;
+    try{
+      const res=await api('/api/vaults/'+id+'/unlock',{method:'POST',body:JSON.stringify({password:pw})});
+      if(!res.ok){alert(res.error||'Wrong password');return}
+      vault.locked=false;
+    }catch(e){alert('Unlock failed');return}
+  }
+  currentVault=vault;
+  await loadVaultData(id);
+  renderSidebar();
+  renderDetail(currentCtx,currentEntries);
+  if(window.innerWidth<=768)mobileView('detail');
 }
 
 async function selectCtx(id){

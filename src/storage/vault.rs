@@ -8,7 +8,7 @@ use crate::crypto::VaultCrypto;
 use super::db::Database;
 use super::models::{Context, Entry};
 
-/// Vault 配置（不加密，存在 ~/.besure/.besure.config）
+/// Vault 配置（不加密，存在 vault 根目录/.besure.config）
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VaultConfig {
     pub version: String,
@@ -16,6 +16,12 @@ pub struct VaultConfig {
     pub salt: Option<Vec<u8>>,
     pub verify_token: Option<Vec<u8>>,
     pub auto_lock_minutes: u32,
+    /// Agent 显示名称（如 "Joey"）
+    #[serde(default)]
+    pub agent_name: Option<String>,
+    /// Agent 类型（openclaw / cursor / codex / vscode / custom）
+    #[serde(default)]
+    pub agent_type: Option<String>,
 }
 
 impl Default for VaultConfig {
@@ -26,6 +32,8 @@ impl Default for VaultConfig {
             salt: None,
             verify_token: None,
             auto_lock_minutes: 5,
+            agent_name: None,
+            agent_type: None,
         }
     }
 }
@@ -97,6 +105,50 @@ impl Vault {
     /// 检查是否有全局视角权限
     pub fn can_access_all_vaults() -> bool {
         env::var("BESURE_VAULTS_ALL").map(|v| v == "true" || v == "1").unwrap_or(false)
+    }
+
+    /// 列出所有 vault 的元信息（给 Dashboard 用）
+    pub fn list_all_vaults_info() -> Vec<super::VaultInfo> {
+        let vaults = Self::list_vault_dirs();
+        vaults.into_iter().map(|(name, path)| {
+            let config: VaultConfig = fs::read_to_string(path.join(".besure.config"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+
+            let agent_name = config.agent_name.clone()
+                .unwrap_or_else(|| name.clone());
+            let agent_type = config.agent_type.clone()
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let encrypted = config.encryption;
+            let locked = encrypted && !path.join("besure.db").exists();
+
+            let (ctx_count, entry_count) = if locked {
+                (0, 0)
+            } else {
+                Self::open(Some(path.clone()))
+                    .ok()
+                    .and_then(|v| v.database().ok())
+                    .and_then(|db| {
+                        let c = db.count_contexts().unwrap_or(0);
+                        let e = db.count_entries().unwrap_or(0);
+                        Some((c, e))
+                    })
+                    .unwrap_or((0, 0))
+            };
+
+            super::VaultInfo {
+                id: name,
+                path: path.display().to_string(),
+                agent_name,
+                agent_type,
+                encrypted,
+                locked,
+                context_count: ctx_count,
+                entry_count,
+            }
+        }).collect()
     }
 
     /// 初始化新 vault
