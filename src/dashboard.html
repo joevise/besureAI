@@ -367,7 +367,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.57.0</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.57.1</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -575,19 +575,34 @@ function renderSidebar(){
     list.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No vaults found.<br>Run <code>besure init</code></div>';
     return;
   }
-  list.innerHTML=allVaults.map((v,i)=>{
+  let html='';
+  allVaults.forEach((v,i)=>{
     let icon=AGENT_ICONS[v.agent_type]||'\u26AA';
     let locked=v.locked?'\uD83D\uDD12 ':'';
-    let active=currentVault&&currentVault.id===v.id?'active':'';
-    return `
-    <div class="ctx-item stagger ${active}" onclick="selectVault('${v.id}')" style="animation-delay:${i*0.05}s">
+    let isActive=currentVault&&currentVault.id===v.id;
+    let expanded=isActive&&contexts.length>0;
+    html+=`<div class="ctx-item stagger ${isActive?'active':''}" onclick="selectVault('${v.id}')" style="animation-delay:${i*0.05}s;cursor:pointer">
       <div class="title">${icon} ${locked}${esc(v.agent_name)}</div>
       <div class="meta">
         <span class="status-badge ${v.locked?'expired':'active'}">${esc(v.agent_type)}</span>
         <span style="font-size:11px;color:var(--text3)">${v.entry_count} entries</span>
       </div>
     </div>`;
-  }).join('');
+    // Show contexts under the active vault
+    if(expanded){
+      contexts.forEach((c,j)=>{
+        let ctxActive=currentCtx&&currentCtx.id===c.id;
+        let ctxIcon=TYPE_ICONS[c.status]||'\uD83D\uDCC1';
+        html+=`<div class="ctx-item ${ctxActive?'active':''}" onclick="event.stopPropagation();selectCtx('${c.id}')" style="margin-left:20px;padding:8px 12px;cursor:pointer;border-left:2px solid var(--border)">
+          <div class="title" style="font-size:13px">${ctxIcon} ${esc(c.title)}</div>
+          <div class="meta">
+            ${(c.tags||[]).slice(0,2).map(t=>'<span class="tag">'+esc(t)+'</span>').join('')}
+          </div>
+        </div>`;
+      });
+    }
+  });
+  list.innerHTML=html;
 }
 
 async function selectVault(id){
@@ -611,15 +626,16 @@ async function selectVault(id){
 
 async function selectCtx(id){
   try{
-    const res=await api(`/api/contexts/${id}/log`);
-    const entries=res.data||[];
-    currentEntries=entries;
+    // Load entries for this specific context from the current vault
+    const res=await api(`/api/vaults/${currentVault.id}/log`);
+    let allEntries=res.data||[];
+    // Filter to just this context
+    currentEntries=allEntries.filter(e=>e.context_id===id);
     const ctx=contexts.find(c=>c.id===id);
     currentCtx=ctx;
     activeTab='timeline';
     renderSidebar();
-    renderDetail(ctx,entries);
-    // Mobile: slide to detail view (full screen)
+    renderDetail(ctx,currentEntries);
     if(window.innerWidth<=768)mobileView('detail');
   }catch(e){console.error(e)}
 }
