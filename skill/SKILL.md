@@ -17,10 +17,23 @@
 > If YES → you must `besure add` NOW.
 > When in doubt, RECORD. Over-recording is cheap. Lost memory is expensive.
 
+### Behavioral Anchors (CRITICAL — bind recording to specific actions):
+
+Tie `besure add` to these concrete trigger points — NOT to abstract "task completion":
+
+1. **After every `git commit && git push`** → `besure add` IMMEDIATELY (before doing anything else)
+2. **After every deployment** (copy binary, restart service, curl test) → `besure add`
+3. **After every user request is fully answered** → `besure add` before waiting for next message
+4. **After every bug fix** → `besure add --type lesson` (what was the bug, root cause, fix)
+
+The danger zone is the "flow state" — when you're coding/debugging, you forget to record.
+The fix: record AS PART OF the commit/deploy workflow, not as a separate "I'll do it later" step.
+
 ### FORBIDDEN:
 - ❌ "I'll remember this for later" → You won't. WRITE IT.
 - ❌ "This is too small to record" → Record it anyway.
 - ❌ "I'll batch-record at the end" → Record NOW.
+- ❌ "I'm in the middle of something, I'll record after the next step" → Record NOW, then continue.
 
 ---
 
