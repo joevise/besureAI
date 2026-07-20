@@ -620,8 +620,16 @@ async function selectVault(id){
   currentVault=vault;
   await loadVaultData(id);
   renderSidebar();
-  renderDetail(currentCtx,currentEntries);
-  if(window.innerWidth<=768)mobileView('detail');
+  // Mobile: don't jump to detail — let user pick a context first
+  // Only auto-show detail if there's exactly one context
+  if(contexts.length===1){
+    currentCtx=contexts[0];
+    renderDetail(currentCtx,currentEntries);
+    if(window.innerWidth<=768)mobileView('detail');
+  }else{
+    renderDetail(currentCtx,currentEntries);
+    // Stay on list view so user can see expanded contexts
+  }
 }
 
 async function selectCtx(id){
