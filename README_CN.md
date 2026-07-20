@@ -44,6 +44,20 @@ cargo install besure
 # → https://github.com/joevise/besureAI/releases
 ```
 
+安装后 Dashboard 自动获得进程守护（崩溃自动重启、开机自启）：
+
+| 平台 | 守护机制 | 管理方式 |
+|------|---------|----------|
+| **Linux** | systemd 用户服务 | `systemctl --user {start|stop|status} besure-dashboard` |
+| **macOS** | launchd 代理 | `launchctl {load|unload} ~/Library/LaunchAgents/com.besure.context.plist` |
+| **Windows** | 启动项 + VBS | 登录自动启动 |
+
+```bash
+besure service install     # 安装后台服务
+besure service status      # 查看是否在运行
+besure service uninstall   # 卸载后台服务
+```
+
 ### 使用
 
 ```bash

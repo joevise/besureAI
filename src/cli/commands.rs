@@ -1172,3 +1172,217 @@ fn save_config(config: &AppConfig) -> Result<()> {
     std::fs::write(&path, json)?;
     Ok(())
 }
+
+// === V0.5.1: Service management ===
+
+/// `besure service install` — 安装进程守护（三平台）
+pub fn cmd_service_install() -> Result<()> {
+    let bin_path = std::env::current_exe()
+        .context("failed to get current exe path")?;
+    let bin_path = bin_path.to_string_lossy().to_string();
+    let bin_dir = std::path::Path::new(&bin_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "/usr/local/bin".to_string());
+
+    #[cfg(target_os = "linux")]
+    {
+        let service_dir = dirs::home_dir()
+            .context("no home dir")?
+            .join(".config/systemd/user");
+        std::fs::create_dir_all(&service_dir)?;
+
+        let service_content = format!(r#"[Unit]
+Description=Besure AI Context Dashboard
+After=network.target
+
+[Service]
+Type=simple
+Environment=PATH={bin_dir}:/usr/local/bin:/usr/bin:/bin
+ExecStart={bin_path} serve --port 7788
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+"#);
+
+        let service_file = service_dir.join("besure-dashboard.service");
+        std::fs::write(&service_file, &service_content)?;
+
+        let _ = std::process::Command::new("loginctl")
+            .args(["enable-linger", &std::env::var("USER").unwrap_or_default()])
+            .output();
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "daemon-reload"]).output();
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "enable", "besure-dashboard.service"]).output();
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "restart", "besure-dashboard.service"]).output();
+
+        println!("✓ systemd service installed and started");
+        println!("  Dashboard: http://localhost:7788");
+        println!("  Manage: systemctl --user {{start|stop|status}} besure-dashboard");
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let plist_dir = dirs::home_dir()
+            .context("no home dir")?
+            .join("Library/LaunchAgents");
+        std::fs::create_dir_all(&plist_dir)?;
+
+        let plist_content = format!(r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.besure.context</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{bin_path}</string>
+        <string>serve</string>
+        <string>--port</string>
+        <string>7788</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardErrorPath</key>
+    <string>/tmp/besure-dashboard.err</string>
+    <key>StandardOutPath</key>
+    <string>/tmp/besure-dashboard.out</string>
+</dict>
+</plist>
+"#);
+
+        let plist_path = plist_dir.join("com.besure.context.plist");
+        std::fs::write(&plist_path, &plist_content)?;
+
+        let _ = std::process::Command::new("launchctl")
+            .args(["unload", &plist_path.to_string_lossy()]).output();
+        let _ = std::process::Command::new("launchctl")
+            .args(["load", &plist_path.to_string_lossy()]).output();
+
+        println!("✓ launchd service installed and started");
+        println!("  Dashboard: http://localhost:7788");
+        println!("  Manage: launchctl {{load|unload}} ~/Library/LaunchAgents/com.besure.context.plist");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let startup_dir = dirs::data_dir()
+            .context("no data dir")?
+            .join("Microsoft/Windows/Start Menu/Programs/Startup");
+        std::fs::create_dir_all(&startup_dir)?;
+
+        let vbs_content = format!(
+            r#"Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run "{} serve --port 7788", 0, False
+"#,
+            bin_path.replace('/', "\\\\")
+        );
+
+        let vbs_path = startup_dir.join("besure-dashboard.vbs");
+        std::fs::write(&vbs_path, &vbs_content)?;
+
+        println!("✓ Windows startup script installed");
+        println!("  Location: {}", vbs_path.display());
+        println!("  Dashboard: http://localhost:7788");
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        bail!("Service installation not supported on this platform.");
+    }
+
+    Ok(())
+}
+
+/// `besure service uninstall`
+pub fn cmd_service_uninstall() -> Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "stop", "besure-dashboard.service"]).output();
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "disable", "besure-dashboard.service"]).output();
+        let service_file = dirs::home_dir()
+            .context("no home dir")?
+            .join(".config/systemd/user/besure-dashboard.service");
+        if service_file.exists() { std::fs::remove_file(&service_file)?; }
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "daemon-reload"]).output();
+        println!("✓ systemd service uninstalled");
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let plist_path = dirs::home_dir()
+            .context("no home dir")?
+            .join("Library/LaunchAgents/com.besure.context.plist");
+        if plist_path.exists() {
+            let _ = std::process::Command::new("launchctl")
+                .args(["unload", &plist_path.to_string_lossy()]).output();
+            std::fs::remove_file(&plist_path)?;
+        }
+        println!("✓ launchd service uninstalled");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let startup_dir = dirs::data_dir()
+            .context("no data dir")?
+            .join("Microsoft/Windows/Start Menu/Programs/Startup");
+        let vbs_path = startup_dir.join("besure-dashboard.vbs");
+        if vbs_path.exists() { std::fs::remove_file(&vbs_path)?; }
+        println!("✓ Windows startup script removed");
+    }
+
+    Ok(())
+}
+
+/// `besure service status`
+pub fn cmd_service_status() -> Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(o) = std::process::Command::new("systemctl")
+            .args(["--user", "status", "besure-dashboard.service", "--no-pager"]).output()
+        {
+            println!("{}", String::from_utf8_lossy(&o.stdout));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(o) = std::process::Command::new("launchctl")
+            .args(["list", "com.besure.context"]).output()
+        {
+            println!("{}", String::from_utf8_lossy(&o.stdout));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(o) = std::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq besure.exe"]).output()
+        {
+            println!("{}", String::from_utf8_lossy(&o.stdout));
+        }
+    }
+
+    // 通用健康检查
+    if let Ok(resp) = std::process::Command::new("curl")
+        .args(["-s", "http://localhost:7788/api/health"]).output()
+    {
+        let health = String::from_utf8_lossy(&resp.stdout);
+        if health.contains("ok") {
+            println!("\n✓ Dashboard is running on http://localhost:7788");
+        } else {
+            println!("\n✗ Dashboard is not responding");
+        }
+    }
+
+    Ok(())
+}

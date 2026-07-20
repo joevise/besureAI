@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.5.0",
+    version = "0.5.1",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -243,6 +243,13 @@ enum Commands {
         #[arg(long, default_value = "20")]
         limit: usize,
     },
+
+    /// Install/uninstall Dashboard service (auto-start on boot)
+    #[command(name = "service")]
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -253,6 +260,16 @@ enum ConfigAction {
     Get { key: String },
     /// List all config: `besure config list`
     List,
+}
+
+#[derive(Subcommand)]
+enum ServiceAction {
+    /// Install Dashboard service (auto-start on boot, auto-restart on crash)
+    Install,
+    /// Uninstall Dashboard service
+    Uninstall,
+    /// Check service status
+    Status,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -339,6 +356,13 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Shared { keyword, entry_types, limit } => {
             cli::commands::cmd_shared(keyword.as_deref(), &entry_types, limit)
+        }
+        Commands::Service { action } => {
+            match action {
+                ServiceAction::Install => cli::commands::cmd_service_install(),
+                ServiceAction::Uninstall => cli::commands::cmd_service_uninstall(),
+                ServiceAction::Status => cli::commands::cmd_service_status(),
+            }
         }
     }
 }

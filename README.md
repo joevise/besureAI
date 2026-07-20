@@ -42,6 +42,20 @@ cargo install besure
 # → https://github.com/joevise/besureAI/releases
 ```
 
+After installation, the Dashboard auto-starts as a background service with crash recovery and boot persistence:
+
+| Platform | Mechanism | Auto-managed via |
+|----------|-----------|------------------|
+| **Linux** | systemd user service | `systemctl --user {start|stop|status} besure-dashboard` |
+| **macOS** | launchd agent | `launchctl {load|unload} ~/Library/LaunchAgents/com.besure.context.plist` |
+| **Windows** | Startup folder + VBS | Auto-starts on login |
+
+```bash
+besure service install     # Install background service
+besure service status      # Check if Dashboard is running
+besure service uninstall   # Remove background service
+```
+
 ### Use
 
 ```bash

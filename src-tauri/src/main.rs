@@ -1,6 +1,5 @@
 // Besure AI Context — Desktop App Entry
 use std::thread;
-use tauri::Manager;
 
 mod server;
 
@@ -11,22 +10,24 @@ fn main() {
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("failed to create runtime");
         rt.block_on(async {
-            let _ = server::start_server(SERVER_PORT).await;
+            if let Err(e) = server::start_server(SERVER_PORT).await {
+                eprintln!("HTTP server error: {}", e);
+            }
         });
     });
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    // 等待 HTTP 服务就绪
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // GPU/渲染回退：优先软件渲染，避免 DRM 权限问题
+    if std::env::var("LIBGL_ALWAYS_SOFTWARE").is_err() {
+        std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+    }
+    if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
 
     tauri::Builder::default()
-        .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.eval(&format!(
-                    "window.location.href='http://localhost:{}'",
-                    SERVER_PORT
-                ));
-            }
-            Ok(())
-        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

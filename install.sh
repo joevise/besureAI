@@ -56,11 +56,23 @@ fi
 echo ""
 echo "✅ 安装成功！${BINARY_NAME} → ${INSTALL_DIR}/${BINARY_NAME}"
 echo ""
+
+# 安装进程守护（auto-start + auto-restart）
+echo "🔧 安装 Dashboard 进程守护..."
+if "${INSTALL_DIR}/${BINARY_NAME}" service install 2>/dev/null; then
+    echo "✓ Dashboard 服务已启动，开机自启已配置"
+else
+    echo "⚠️  进程守护安装失败（不影响正常使用）"
+    echo "   可手动启动: besure serve --port 7788"
+fi
+
+echo ""
 echo "开始使用："
 echo "  besure init --encrypt          # 初始化（设置主密码）"
 echo "  besure create \"我的项目\"       # 创建上下文"
 echo "  besure add \"完成了某件事\"      # 记录进展"
 echo "  besure list                    # 查看所有上下文"
+echo "  besure service status          # 查看 Dashboard 状态"
 echo "  besure --help                  # 查看所有命令"
 echo ""
 echo "貔貅记忆 — 只进不出，记忆永存 🐉"
