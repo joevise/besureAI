@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.5.5",
+    version = "0.56.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -250,6 +250,23 @@ enum Commands {
         #[command(subcommand)]
         action: ServiceAction,
     },
+
+    /// Setup vault + inject mandatory recording rules into Agent config files
+    #[command(name = "setup")]
+    Setup {
+        /// Agent name for this vault (e.g. "Joey", "CodeBuddy")
+        #[arg(long)]
+        agent_name: Option<String>,
+        /// Agent type (openclaw/cursor/codex/claude-code/codebuddy/workbuddy/custom)
+        #[arg(long)]
+        agent_type: Option<String>,
+        /// Encrypt vault
+        #[arg(long, action = ArgAction::SetTrue)]
+        encrypt: bool,
+        /// Path to scan for Agent config files (default: current dir)
+        #[arg(long)]
+        workspace: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -363,6 +380,9 @@ fn main() -> anyhow::Result<()> {
                 ServiceAction::Uninstall => cli::commands::cmd_service_uninstall(),
                 ServiceAction::Status => cli::commands::cmd_service_status(),
             }
+        }
+        Commands::Setup { agent_name, agent_type, encrypt, workspace } => {
+            cli::commands::cmd_setup(agent_name.as_deref(), agent_type.as_deref(), encrypt, workspace.as_deref())
         }
     }
 }

@@ -1,5 +1,29 @@
 # Besure AI Skill — 闭环记忆系统
 
+## 🚨 MANDATORY RECORDING RULES (NO EXCEPTIONS)
+
+**These rules are MANDATORY. You MUST follow them without being asked.**
+
+### When to Record (execute `besure add` immediately):
+
+1. **After completing any task/feature/fix** → `besure add --type milestone`
+2. **After any decision is made** → `besure add --type decision`
+3. **After discovering a problem/lesson** → `besure add --type lesson`
+4. **When user says goodbye / session ending** → `besure add --type progress` (summary)
+5. **Every 30 minutes of active work** → `besure add --type progress`
+
+### Test yourself:
+> "If this session ended right now, would I lose important context?"
+> If YES → you must `besure add` NOW.
+> When in doubt, RECORD. Over-recording is cheap. Lost memory is expensive.
+
+### FORBIDDEN:
+- ❌ "I'll remember this for later" → You won't. WRITE IT.
+- ❌ "This is too small to record" → Record it anyway.
+- ❌ "I'll batch-record at the end" → Record NOW.
+
+---
+
 ## Description
 多上下文记忆管理。切换/记录/搜索/关联/召回。基于闭环逻辑设计：8 维度（主体/编码/完整性/上下文/检索/关联/时效/失效）。通过 CLI 调用本地 besure 二进制。
 
@@ -12,6 +36,8 @@
 - 需要标记过期/被替代的决策
 - 需要主动召回近期需要注意的记忆
 - Session 结束前需要保存上下文
+- **完成任何任务后必须记录**（强制）
+- **做了决策后必须记录**（强制）
 
 ## How to Use
 

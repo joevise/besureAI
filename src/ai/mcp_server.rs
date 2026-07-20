@@ -62,7 +62,7 @@ impl McpServer {
                     },
                     "serverInfo": {
                         "name": "besure",
-                        "version": "0.5.5"
+                        "version": "0.56.0"
                     }
                 }
             }),
@@ -121,7 +121,7 @@ impl McpServer {
             }),
             json!({
                 "name": "besure_add_entry",
-                "description": "向某上下文追加进展记录",
+                "description": "⚠️ MANDATORY: Record progress/decision/milestone/lesson to Besure memory. Call this after completing tasks, making decisions, or learning lessons. If in doubt, RECORD. Lost memory is worse than over-recording.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

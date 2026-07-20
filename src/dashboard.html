@@ -367,7 +367,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.5.5</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.56.0</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -532,7 +532,7 @@ async function init(){
 
 async function refresh(){
   try{
-    // V0.5.5: Load all vaults first
+    // V0.56: Load all vaults first
     const vaultsRes=await api('/api/vaults');
     allVaults=vaultsRes.data||[];
     

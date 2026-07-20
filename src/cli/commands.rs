@@ -1386,3 +1386,182 @@ pub fn cmd_service_status() -> Result<()> {
 
     Ok(())
 }
+
+// === V0.56: besure setup ===
+
+/// Agent config files to detect (platform-agnostic)
+const AGENT_CONFIG_FILES: &[&str] = &[
+    "AGENTS.md",           // OpenClaw / Codex / Hermes fallback / WorkBuddy
+    ".hermes.md",          // Hermes Agent primary
+    "HERMES.md",           // Hermes Agent alt
+    "CLAUDE.md",           // Claude Code
+    ".cursorrules",        // Cursor
+    ".codebuddy/rules.md", // 腾讯 CodeBuddy
+];
+
+const BESURE_RULES_TEMPLATE: &str = r#"<!-- BESURE-AUTO-START -->
+## 🐉 Besure 记忆系统（强制规则 — NO EXCEPTIONS）
+
+### 启动时必做
+每次 session 启动时执行：
+```bash
+export PATH="$HOME/.hermes/node/bin:$PATH"
+echo "besure2026" | besure unlock 2>/dev/null
+besure status   # 查看当前状态
+besure recall   # 主动召回：即将过期/最近/被替代的记忆
+```
+
+### 必须记录的场景（NO EXCEPTIONS）
+以下场景发生时，**立即执行 `besure add`**，不等用户提醒：
+
+1. **完成任何任务/功能/修复** → `besure add --type milestone`
+2. **做了决策或达成结论** → `besure add --type decision`
+3. **踩坑/发现问题** → `besure add --type lesson`
+4. **Session 即将结束** → `besure add --type progress`（总结本次所有进展）
+5. **用户说了"记一下"或类似意思** → 立即记
+
+### 判断标准
+> 如果这个信息在下次 session 中可能有用，就必须记。
+> **宁可多记，不可漏记。** 记录的成本是几秒，丢失记忆的代价是数小时。
+
+### 禁止的行为
+- ❌ "我记得这个，不用写" → 你不会记得。**WRITE IT.**
+- ❌ "这个太小不用记" → 记。
+- ❌ "等下一起记" → **现在就记。**
+- ❌ 跳过 `besure add` 直接回复用户 → 先记再回。
+
+### 查询历史
+- `besure search "关键词"` — 全文搜索
+- `besure query --last 7d` — 最近 7 天
+- `besure log` — 当前上下文时间线
+<!-- BESURE-AUTO-END -->
+"#;
+
+/// `besure setup`
+pub fn cmd_setup(
+    agent_name: Option<&str>,
+    agent_type: Option<&str>,
+    encrypt: bool,
+    workspace: Option<&str>,
+) -> Result<()> {
+    println!("🐉 Besure AI Context — Setup\n");
+
+    // Step 1: Init vault
+    println!("Step 1: Initialize vault");
+    let vault = Vault::default_root();
+    if vault.join(".besure.config").exists() {
+        println!("  ✓ Vault already exists at {}", vault.display());
+        // Update agent_name/agent_type if provided
+        if agent_name.is_some() || agent_type.is_some() {
+            let config_path = vault.join(".besure.config");
+            let mut config: serde_json::Value = std::fs::read_to_string(&config_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or(serde_json::json!({}));
+            if let Some(name) = agent_name {
+                config["agent_name"] = serde_json::Value::String(name.to_string());
+            }
+            if let Some(atype) = agent_type {
+                config["agent_type"] = serde_json::Value::String(atype.to_string());
+            }
+            std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+            println!("  ✓ Updated agent metadata");
+        }
+    } else {
+        // Run init logic
+        cmd_init_from_args(encrypt)?;
+        // Write agent metadata
+        if agent_name.is_some() || agent_type.is_some() {
+            let config_path = vault.join(".besure.config");
+            let mut config: serde_json::Value = std::fs::read_to_string(&config_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or(serde_json::json!({}));
+            if let Some(name) = agent_name {
+                config["agent_name"] = serde_json::Value::String(name.to_string());
+            }
+            if let Some(atype) = agent_type {
+                config["agent_type"] = serde_json::Value::String(atype.to_string());
+            }
+            std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+        }
+    }
+    println!();
+
+    // Step 2: Detect Agent config files
+    println!("Step 2: Detect Agent configuration files");
+    let scan_dir = workspace
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+
+    let mut found_files = Vec::new();
+    for candidate in AGENT_CONFIG_FILES {
+        let path = scan_dir.join(candidate);
+        if path.exists() {
+            println!("  ✓ Found: {}", candidate);
+            found_files.push(path);
+        }
+    }
+    // Also check parent dir (for workspace root)
+    if found_files.is_empty() {
+        if let Some(parent) = scan_dir.parent() {
+            for candidate in AGENT_CONFIG_FILES {
+                let path = parent.join(candidate);
+                if path.exists() {
+                    println!("  ✓ Found (parent): {}", candidate);
+                    found_files.push(path);
+                }
+            }
+        }
+    }
+
+    if found_files.is_empty() {
+        println!("  ✗ No Agent config files found in {}", scan_dir.display());
+        println!("  ℹ️  Supported: AGENTS.md, .hermes.md, CLAUDE.md, .cursorrules, .codebuddy/rules.md");
+        println!("  ℹ️  Run `besure setup` in your Agent's workspace directory.");
+    } else {
+        // Step 3: Inject rules
+        println!("\nStep 3: Inject mandatory recording rules");
+        for file in &found_files {
+            inject_rules(file)?;
+        }
+    }
+    println!();
+
+    // Step 4: Install service (optional)
+    println!("Step 4: Dashboard service");
+    let _ = cmd_service_status();
+    println!("\n✅ Setup complete!");
+    println!("\nNext: Start working with your Agent. It will automatically record to Besure.");
+
+    Ok(())
+}
+
+/// Idempotent injection of Besure rules into a file
+fn inject_rules(path: &std::path::Path) -> Result<()> {
+    let content = std::fs::read_to_string(path)?;
+    let start_marker = "<!-- BESURE-AUTO-START -->";
+    let end_marker = "<!-- BESURE-AUTO-END -->";
+
+    let new_block = format!("{}{}{}", start_marker, BESURE_RULES_TEMPLATE
+        .strip_prefix(start_marker)
+        .unwrap_or(BESURE_RULES_TEMPLATE)
+        .strip_suffix(end_marker)
+        .unwrap_or(BESURE_RULES_TEMPLATE), end_marker);
+
+    if content.contains(start_marker) {
+        // Replace existing block
+        let start_idx = content.find(start_marker).unwrap();
+        let end_idx = content.find(end_marker).unwrap() + end_marker.len();
+        let updated = format!("{}\n\n{}\n{}", &content[..start_idx].trim_end(), new_block, &content[end_idx..].trim_start());
+        std::fs::write(path, updated)?;
+        println!("  ✓ Updated rules in {}", path.file_name().unwrap_or_default().to_string_lossy());
+    } else {
+        // Append
+        let updated = format!("{}\n\n{}\n", content.trim_end(), new_block);
+        std::fs::write(path, updated)?;
+        println!("  ✓ Injected rules into {}", path.file_name().unwrap_or_default().to_string_lossy());
+    }
+    Ok(())
+}
+
