@@ -61,7 +61,11 @@ besure service uninstall   # 卸载后台服务
 ### 使用
 
 ```bash
-# 初始化（启用加密）
+# 方式一：一键 Setup（推荐）—— 初始化 + 配置 Agent 自动记忆
+besure setup --agent-name "Joey" --agent-type openclaw
+# 自动检测 AGENTS.md / CLAUDE.md / .cursorrules 等配置文件并注入强制记忆规则
+
+# 方式二：手动初始化
 besure init --encrypt
 
 # 创建第一个上下文
@@ -224,10 +228,42 @@ besure recall                     召回需要注意的记忆
 besure config set/get/list        项目配置
 
 # === 服务 ===
+besure setup [--agent-name <n>]      一键配置：初始化 + Agent 铁律注入
 besure serve [--port 7788]        启动 Web Dashboard + REST API
 besure mcp                        启动 MCP Server（stdio，23 个 tools）
 besure export <context>           导出为 Markdown
 ```
+
+## `besure setup` — 开箱即用
+
+```bash
+$ besure setup --agent-name "Joey" --agent-type openclaw
+
+🐉 Besure AI Context — Setup
+
+Step 1: Initialize vault
+  ✓ Vault created at ~/.besure/joey
+
+Step 2: Detect Agent configuration files
+  ✓ Found: AGENTS.md
+
+Step 3: Inject mandatory recording rules
+  ✓ Injected rules into AGENTS.md
+
+✅ Setup complete!
+```
+
+支持自动检测的配置文件：
+
+| 文件 | 平台 |
+|------|------|
+| `AGENTS.md` | OpenClaw / Codex / Hermes / WorkBuddy |
+| `.hermes.md` | Hermes Agent |
+| `CLAUDE.md` | Claude Code |
+| `.cursorrules` | Cursor |
+| `.codebuddy/rules.md` | 腾讯 CodeBuddy |
+
+注入用 `<!-- BESURE-AUTO-START/END -->` 标记包裹，幂等执行，重复运行自动更新。
 
 ---
 
@@ -240,6 +276,8 @@ besure export <context>           导出为 Markdown
 | **V3** | ✅ 完成 | 闭环引擎：关联/过期/替代/召回/项目配置（16 MCP tools） |
 | **V0.4** | ✅ 完成 | 统一查询（时间/类型/关键词/resolved）、resolve、append、stats（20 MCP tools） |
 | **V0.5** | ✅ 完成 | 多 Vault 架构：物理隔离、全局视角、共享 vault（23 MCP tools） |
+| **V0.5.5** | ✅ 完成 | Dashboard 多 Agent 视角：侧边栏 Agent 列表、切换数据源 |
+| **V0.56** | ✅ 完成 | `besure setup` + 强制记忆铁律：多平台检测、幂等注入 AGENTS.md |
 | **下一步** | 📋 计划中 | Tauri 桌面 APP、crates.io 发布、GitHub Actions CI、Product Hunt 上线 |
 | **未来** | 📋 计划中 | VS Code 插件、浏览器插件、团队协作 |
 

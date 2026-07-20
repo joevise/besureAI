@@ -285,6 +285,8 @@ Single binary. Zero external dependencies. Pure Rust.
 | **V3** | ✅ Done | Closure engine: entry links, expiry, supersede, recall, project config (16 MCP tools) |
 | **V0.4** | ✅ Done | Unified query (time/type/keyword/resolved filters), resolve, append, stats (20 MCP tools) |
 | **V0.5** | ✅ Done | Multi-vault architecture: physical isolation per agent, global view, shared vault (23 MCP tools) |
+| **V0.5.5** | ✅ Done | Dashboard multi-Agent view: sidebar Agent list, data source switching |
+| **V0.56** | ✅ Done | `besure setup` + mandatory recording rules: multi-platform detection, idempotent injection |
 | **Next** | 📋 Planned | Tauri desktop app, crates.io publish, GitHub Actions CI, Product Hunt launch |
 | **Future** | 📋 Planned | VS Code extension, browser extension, team collaboration |
 
