@@ -24,7 +24,9 @@
 \usepackage{newtxtext,newtxmath}  % Times-like，学术标准
 
 % === 数学 ===
-\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsmath,amsfonts}
+\let\Bbbk\relax  % 避免与 newtxmath 冲突
+\usepackage{amssymb}
 
 % === 图表 ===
 \usepackage{graphicx}
