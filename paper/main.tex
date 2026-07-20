@@ -1,0 +1,476 @@
+% 从记录到记忆：大语言模型 Agent 的闭环记忆系统
+% From Recording to Remembering: A Closed-Loop Memory System for LLM Agents
+%
+% 编译方式: pdflatex
+% 提交目标: arXiv cs.AI
+
+\documentclass{article}
+
+% === 页面设置 ===
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper, margin=1in]{geometry}
+
+% === 字体（支持中文）===
+\usepackage{xeCJK}
+\setCJKmainfont{Noto Serif CJK SC}[
+  BoldFont = Noto Sans CJK SC Bold,
+  ItalicFont = Noto Serif CJK SC Light
+]
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+
+% 英文字体
+\usepackage{newtxtext,newtxmath}  % Times-like，学术标准
+
+% === 数学 ===
+\usepackage{amsmath,amssymb,amsfonts}
+
+% === 图表 ===
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{subcaption}
+\usepackage{float}
+
+% === TikZ 绘图 ===
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, calc, backgrounds, decorations.pathreplacing}
+
+% === 颜色 ===
+\usepackage{xcolor}
+\definecolor{besuredark}{HTML}{1a1a2e}
+\definecolor{besureblue}{HTML}{16213e}
+\definecolor{besureaccent}{HTML}{0f3460}
+\definecolor{besuregold}{HTML}{e94560}
+\definecolor{layer1color}{HTML}{2D6A4F}
+\definecolor{layer2color}{HTML}{1B4F72}
+\definecolor{layer3color}{HTML}{7D3C98}
+\definecolor{activecolor}{HTML}{27AE60}
+\definecolor{expiredcolor}{HTML}{E67E22}
+\definecolor{supersededcolor}{HTML}{8E44AD}
+\definecolor{archivedcolor}{HTML}{7F8C8D}
+
+% === 超链接 ===
+\usepackage[colorlinks=true, linkcolor=blue!60!black, citecolor=green!50!black, urlcolor=blue!70!black]{hyperref}
+
+% === 算法 ===
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% === 标题信息 ===
+\title{\textbf{从记录到记忆：大语言模型 Agent 的闭环记忆系统} \\[6pt]
+\large \textit{From Recording to Remembering: A Closed-Loop Memory System for LLM Agents}}
+
+\author{
+刘正阳$^{1}$\thanks{通讯作者} \\[4pt]
+\texttt{elttilz@gmail.com} \\[4pt]
+$^{1}$FuturX AI
+}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+% ============================================================
+\begin{abstract}
+% ============================================================
+
+大语言模型（LLM）Agent 在软件开发、办公自动化和知识工作领域正获得广泛应用，但它们普遍存在一个尚未被充分认识的根本性缺陷：\textbf{元认知缺失}（metacognitive deficit）——即 Agent 缺乏判断``何时应将当前交互信息写入持久记忆''的内建能力。这一缺陷导致 Agent 在每次会话启动时都处于``失忆''状态，大量的决策进展、经验教训和上下文信息在会话间隙被永久丢失。
+
+现有的记忆增强方案（如 RAG、MemGPT、向量数据库等）主要关注记忆的\textbf{检索}（retrieval）和\textbf{存储}（storage），却忽视了记忆的\textbf{写入触发}（write triggering）问题。本文证明，问题的核心不在于``如何检索记忆''，而在于``什么时候应该写入记忆''——这是一个被现有研究几乎完全忽略的维度。
+
+本文提出一个闭环记忆系统框架，包含三项核心贡献：（1）\textbf{三层强制记忆注入机制}（Three-Layer Mandatory Memory Injection），通过行为规则层、程序知识层和工具提示层的递进式注入，将记忆写入行为嵌入 Agent 的执行流程；（2）\textbf{四态记忆生命周期模型}（Four-State Memory Lifecycle），引入过期、替代和归档等状态转换；（3）\textbf{八维度评估框架}（Eight-Dimension Evaluation Framework）。我们在 Besure AI Context 系统中实现了上述框架，并通过实际多 Agent 协作场景验证了其有效性。
+
+\textbf{关键词}：大语言模型 Agent；记忆系统；元认知；记忆生命周期；MCP Protocol
+
+\end{abstract}
+
+% ============================================================
+\section{引言}
+% ============================================================
+
+\subsection{背景}
+
+随着大语言模型能力的飞速提升，以 LLM 为核心的自主 Agent 系统在软件开发、数据分析、办公自动化等领域展现出前所未有的应用潜力。Claude Code、Cursor、OpenClaw、GitHub Copilot 等工具已经深度融入开发者的日常工作流程。然而，这些 Agent 系统在功能性上日益完善的同时，却普遍存在一个被忽视的根本性限制：\textbf{记忆缺失}。
+
+LLM Agent 的``记忆''本质上依赖于上下文窗口（context window）内的注意力机制。一旦会话结束、上下文被清空，Agent 便回到完全``失忆''的状态。
+
+\subsection{问题的发现}
+
+本文第一作者在开发和维护多个 AI Agent（代号 Joey、Joevise、William）的实践中，深刻体验到了这一问题的严重性。三个 Agent 同时工作数小时，完成了从 V0.4 到 V0.56 的多个版本迭代，涉及数十项功能开发和架构决策。然而，检查记忆 Vault 时发现：记录几乎为空。
+
+关键观察是：Agent 并非不会使用记忆工具，而是在执行任务时\textbf{不知道``当前这一时刻应该记录''}。
+
+\subsection{核心论点}
+
+我们将这一现象称为\textbf{记忆写入触发问题}（The Recording Trigger Problem）：在 LLM Agent 系统中，不存在内建的机制来决定``什么时候应该将当前交互信息写入持久记忆''。问题不在``怎么检索''，而在\textbf{``什么时候写入''}。
+
+% ============================================================
+\section{相关工作}
+% ============================================================
+
+\subsection{MemGPT}
+
+MemGPT~\cite{packer2023memgpt} 借鉴操作系统的虚拟内存管理思想，将 Agent 的记忆分为核心记忆和归档记忆两层。然而，MemGPT 关注的是\textbf{记忆管理}而非\textbf{写入触发}。
+
+\subsection{RAG}
+
+检索增强生成~\cite{lewis2020rag} 本质上是一个\textbf{只读}系统：它从知识库中检索信息，但不负责写入。RAG 优化了检索效率，但完全回避了``何时写入''的问题。
+
+\subsection{现有方案对比}
+
+表~\ref{tab:comparison} 总结了现有方案的覆盖维度。所有方案都没有解决写入触发问题。
+
+\begin{table}[H]
+\centering
+\caption{现有记忆增强方案的覆盖维度对比}
+\label{tab:comparison}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{方案} & \textbf{写入触发} & \textbf{存储} & \textbf{检索} & \textbf{状态管理} & \textbf{关联} \\
+\midrule
+RAG & ✗ & ✓ & ✓ & ✗ & ✗ \\
+MemGPT & △ & ✓ & ✓ & △ & ✗ \\
+向量数据库 & ✗ & ✓ & ✓ & ✗ & ✗ \\
+长上下文窗口 & ✗ & ✗ & ✓ & ✗ & ✗ \\
+MCP & ✗ & — & — & ✗ & ✗ \\
+\textbf{本文方案} & \textbf{✓} & \textbf{✓} & \textbf{✓} & \textbf{✓} & \textbf{✓} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{理论框架}
+% ============================================================
+
+\subsection{记忆写入触发问题}
+
+\textbf{定义 1}（记忆写入触发问题）。设 Agent 在时刻 $t$ 的上下文为 $C(t)$，累积交互历史为 $H(t) = \{h_1, h_2, \ldots, h_t\}$。当 Agent 从时刻 $t$ 过渡到 $t + \Delta t$ 时，上下文差量 $\Delta C$ 中的信息将丢失，除非执行了显式写入操作 $W(h_i) \to M$：
+
+$$\text{Memory} = \langle \text{Encode},\ \text{Store},\ \text{Retrieve},\ \text{Maintain} \rangle$$
+
+% ------------------------------------------------------------
+\subsection{三层强制记忆注入机制}
+% ------------------------------------------------------------
+
+% === 图 1：三层架构 ===
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  layer/.style={
+    rectangle, rounded corners=5pt, draw, very thick,
+    minimum width=12cm, minimum height=1.8cm,
+    align=center, font=\small
+  },
+  arrow/.style={->, >=Stealth, very thick, gray}
+]
+
+% Layer 1
+\node[layer, fill=layer1color!15, draw=layer1color] (l1) at (0, 4) {
+  \textbf{Layer 1: 行为规则层 (Behavioral Rules)} \\[3pt]
+  载体: AGENTS.md / CLAUDE.md / .cursorrules \\
+  \textit{解决: ``什么时候记'' — 会话启动时强制加载}
+};
+
+% Layer 2
+\node[layer, fill=layer2color!15, draw=layer2color] (l2) at (0, 1.5) {
+  \textbf{Layer 2: 程序知识层 (Procedural Knowledge)} \\[3pt]
+  载体: SKILL.md (技能文档) \\
+  \textit{解决: ``怎么记'' — 调用工具时强化格式和方法}
+};
+
+% Layer 3
+\node[layer, fill=layer3color!15, draw=layer3color] (l3) at (0, -1) {
+  \textbf{Layer 3: 工具提示层 (Tool-Level Reminders)} \\[3pt]
+  载体: MCP Tool Description \\
+  \textit{解决: ``调用时提醒'' — 每次工具选择时兜底}
+};
+
+% Arrows
+\draw[arrow] (l1) -- node[right, font=\footnotesize] {强化} (l2);
+\draw[arrow] (l2) -- node[right, font=\footnotesize] {兜底} (l3);
+
+% Side labels
+\node[left=0.3cm of l1, font=\footnotesize\bfseries, text=layer1color] {启动时};
+\node[left=0.3cm of l2, font=\footnotesize\bfseries, text=layer2color] {调用时};
+\node[left=0.3cm of l3, font=\footnotesize\bfseries, text=layer3color] {选择时};
+
+\end{tikzpicture}
+\caption{三层强制记忆注入机制的纵深防御架构}
+\label{fig:three-layers}
+\end{figure}
+
+三层的协同关系如表~\ref{tab:layers} 所示：
+
+\begin{table}[H]
+\centering
+\caption{三层强制记忆注入的协同关系}
+\label{tab:layers}
+\small
+\begin{tabular}{lccl}
+\toprule
+\textbf{层级} & \textbf{加载时机} & \textbf{强制力} & \textbf{解决问题} \\
+\midrule
+Layer 1: 配置文件 & 会话启动时 & 最强 & When（什么时候记） \\
+Layer 2: 技能文档 & 技能调用时 & 中等 & How + What（怎么记） \\
+Layer 3: 工具描述 & 工具选择时 & 最频繁 & Reminder（调用提醒） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ------------------------------------------------------------
+\subsection{四态记忆生命周期模型}
+% ------------------------------------------------------------
+
+现有记忆系统的记忆条目只有两个状态：存在或删除。我们提出四态模型（图~\ref{fig:lifecycle}）：
+
+% === 图 2：四态生命周期状态机 ===
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  state/.style={
+    circle, draw, very thick, minimum size=2.5cm,
+    align=center, font=\small
+  },
+  transition/.style={->, >=Stealth, very thick, font=\footnotesize}
+]
+
+% States
+\node[state, fill=activecolor!20, draw=activecolor] (active) at (0, 0) {\textbf{Active} \\ 活跃};
+\node[state, fill=expiredcolor!20, draw=expiredcolor] (expired) at (5, 0) {\textbf{Expired} \\ 过期};
+\node[state, fill=supersededcolor!20, draw=supersededcolor] (superseded) at (2.5, -3.5) {\textbf{Superseded} \\ 被替代};
+\node[state, fill=archivedcolor!20, draw=archivedcolor] (archived) at (8.5, -3.5) {\textbf{Archived} \\ 归档};
+
+% Transitions
+\draw[transition, color=expiredcolor] (active) -- node[above] {expire} (expired);
+\draw[transition, color=supersededcolor] (active) -- node[left, xshift=-2pt] {supersede} (superseded);
+\draw[transition, color=archivedcolor] (expired) -- node[above, sloped] {archive} (archived);
+\draw[transition, color=archivedcolor, dashed] (superseded) -- node[below] {archive} (archived);
+
+% Annotations
+\node[font=\scriptsize, text=gray, below=0.1cm of active] {当前有效};
+\node[font=\scriptsize, text=gray, below=0.1cm of expired] {时效到期};
+\node[font=\scriptsize, text=gray, below=0.1cm of superseded] {新版本覆盖};
+\node[font=\scriptsize, text=gray, below=0.1cm of archived] {手动 sidelined};
+
+\end{tikzpicture}
+\caption{四态记忆生命周期状态机}
+\label{fig:lifecycle}
+\end{figure}
+
+\subsubsection{与认知科学理论的对应}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{状态转换} & \textbf{认知科学对应} & \textbf{理论来源} \\
+\midrule
+Active → Expired & 自然衰减 (decay theory) & Ebbinghaus (1885) \\
+Active → Superseded & 记忆更新 (memory updating) & Naveh-Benjamin \& Jonides (1984) \\
+Active → Archived & 长期记忆深处 & Atkinson \& Shiffrin (1968) \\
+Recall (主动召回) & 默认模式网络 (DMN) & Raichle et al. (2001) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ------------------------------------------------------------
+\subsection{记忆关联图谱}
+% ------------------------------------------------------------
+
+每条记忆可以有向链接到其他记忆，形成有向图结构：
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{llll}
+\toprule
+\textbf{关系类型} & \textbf{语义} & \textbf{方向} & \textbf{学术对应} \\
+\midrule
+\texttt{caused\_by} & A 导致了 B & A→B (因果) & Causal reasoning \\
+\texttt{supersedes} & 新A替代旧B & A→B (替代) & Memory updating \\
+\texttt{related\_to} & A与B相关 & A↔B (联想) & Associative memory \\
+\texttt{ref\_file} & A引用文件F & A→F (外部) & Episodic memory \\
+\texttt{ref\_commit} & A引用代码 & A→C (外部) & Source monitoring \\
+\texttt{ref\_url} & A引用网页 & A→U (外部) & Episodic memory \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% === 图 3：记忆关联图谱示例 ===
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  mem/.style={
+    rectangle, rounded corners=3pt, draw, thick,
+    minimum width=2.8cm, minimum height=1cm,
+    align=center, font=\footnotesize
+  },
+  edge/.style={->, >=Stealth, thick, font=\scriptsize}
+]
+
+% Nodes
+\node[mem, fill=activecolor!15, draw=activecolor] (v3) at (0, 0) {decision\_v3 \\ \textit{(current)}};
+\node[mem, fill=supersededcolor!15, draw=supersededcolor] (v2) at (4, 0) {decision\_v2};
+\node[mem, fill=supersededcolor!15, draw=supersededcolor] (v1) at (8, 0) {decision\_v1};
+
+\node[mem, fill=besuregold!15, draw=besuregold] (bugfix) at (0, -2.5) {bug\_fix\_D};
+\node[mem, fill=layer2color!15, draw=layer2color] (test) at (4, -2.5) {test\_case\_E};
+\node[mem, fill=layer1color!15, draw=layer1color] (feature) at (8, -2.5) {feature\_release\_A};
+
+% Edges
+\draw[edge, color=supersededcolor] (v3) -- node[above] {supersedes} (v2);
+\draw[edge, color=supersededcolor] (v2) -- node[above] {supersedes} (v1);
+\draw[edge, color=besuregold] (bugfix) -- node[left] {caused\_by} (v3);
+\draw[edge, color=layer2color, dashed] (bugfix) -- node[above] {related\_to} (test);
+\draw[edge, color=layer1color] (v1) -- node[right, xshift=2pt] {caused\_by} (feature);
+
+\end{tikzpicture}
+\caption{记忆关联图谱示例：因果链路与决策演进}
+\label{fig:graph}
+\end{figure}
+
+% ------------------------------------------------------------
+\subsection{主动召回机制}
+% ------------------------------------------------------------
+
+不同于被动搜索，我们设计了主动召回（proactive recall）：Agent 会话启动时主动获取需要注意的记忆（即将过期、被替代、最近重要记忆），模拟人脑默认模式网络的工作机制。
+
+% ------------------------------------------------------------
+\subsection{八维度评估框架}
+% ------------------------------------------------------------
+
+% === 图 4：八维度雷达图 ===
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=1.2]
+
+\def\num{8}
+\def\radius{3}
+
+% 绘制网格
+\foreach \r in {0.6, 1.2, 1.8, 2.4, 3} {
+  \draw[gray!30] (0,0) \foreach \i [evaluate=\i as \angle using {90 - \i*360/\um}] in {1,...,\num} {
+    -- ({\r*cos(\angle)},{\r*sin(\angle)})
+  } -- cycle;
+}
+
+% 绘制轴线
+\foreach \i [evaluate=\i as \angle using {90 - \i*360/\num}] in {0,...,7} {
+  \draw[gray!50] (0,0) -- ({\radius*cos(\angle)},{\radius*sin(\angle)});
+}
+
+% 本方案覆盖（满分）
+\foreach \i [evaluate=\i as \angle using {90 - \i*360/\num}] in {0,...,7} {
+  \fill[layer1color!50] ({2.7*cos(\angle)},{2.7*sin(\angle)}) circle (3pt);
+}
+
+% 现有方案覆盖（仅检索维度高）
+\foreach \i [evaluate=\i as \angle using {90 - \i*360/\num}] in {0,...,7} {
+  \fill[besuregold!50] ({0.9*cos(\angle)},{0.9*sin(\angle)}) circle (3pt);
+}
+
+% 标签
+\foreach \i/\label [evaluate=\i as \angle using {90 - \i*360/\num}] in {
+  0/主体,
+  1/编码,
+  2/完整性,
+  3/上下文,
+  4/检索,
+  5/关联,
+  6/时效,
+  7/失效
+} {
+  \node[font=\footnotesize] at ({(\radius+0.6)*cos(\angle)},{(\radius+0.6)*sin(\angle)}) {\label};
+}
+
+% Legend
+\node[font=\footnotesize, fill=layer1color!50, draw=layer1color, rounded corners=2pt] at (-3.8, -2.5) {本文方案};
+\node[font=\footnotesize, fill=besuregold!50, draw=besuregold, rounded corners=2pt] at (-3.8, -3.1) {现有方案};
+
+\end{tikzpicture}
+\caption{八维度评估框架雷达图：本文方案 vs 现有方案}
+\label{fig:radar}
+\end{figure}
+
+% ============================================================
+\section{实现}
+% ============================================================
+
+% === 图 5：系统架构 ===
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={rectangle, rounded corners=4pt, draw, thick, minimum height=1.2cm, align=center, font=\small},
+  arrow/.style={->, >=Stealth, thick}
+]
+
+% Agents
+\node[box, fill=layer1color!15, draw=layer1color, minimum width=2.5cm] (joey) at (-5, 2) {Agent: Joey};
+\node[box, fill=layer2color!15, draw=layer2color, minimum width=2.5cm] (joevise) at (-5, 0) {Agent: Joevise};
+\node[box, fill=layer3color!15, draw=layer3color, minimum width=2.5cm] (william) at (-5, -2) {Agent: William};
+
+% Interface
+\node[box, fill=besuregold!15, draw=besuregold, minimum width=3cm, minimum height=3cm] (mcp) at (0, 0) {MCP Server \\ (23 tools) \\ CLI \\ REST API};
+
+% Vaults
+\node[box, fill=activecolor!15, draw=activecolor, minimum width=2.5cm] (v1) at (5, 2) {Vault: joey/ \\ SQLite + AES};
+\node[box, fill=activecolor!15, draw=activecolor, minimum width=2.5cm] (v2) at (5, 0) {Vault: joevise/};
+\node[box, fill=activecolor!15, draw=activecolor, minimum width=2.5cm] (v3) at (5, -2) {Vault: william/};
+
+% Dashboard
+\node[box, fill=besureaccent!15, draw=besureaccent, minimum width=3cm] (dash) at (10, 0) {Dashboard \\ Multi-Agent \\ View};
+
+% Arrows
+\draw[arrow] (joey) -- (mcp);
+\draw[arrow] (joevise) -- (mcp);
+\draw[arrow] (william) -- (mcp);
+\draw[arrow] (mcp) -- (v1);
+\draw[arrow] (mcp) -- (v2);
+\draw[arrow] (mcp) -- (v3);
+\draw[arrow, dashed] (dash) -- (mcp);
+
+% Labels
+\node[font=\scriptsize, above=0.1cm of mcp] {物理隔离};
+\node[font=\scriptsize, above=0.1cm of dash] {全局视角};
+
+\end{tikzpicture}
+\caption{Besure AI Context 系统架构}
+\label{fig:architecture}
+\end{figure}
+
+系统采用 100\% Rust 实现，编译为单一二进制文件。核心技术选型包括：AES-256-GCM 加密、SQLite 存储（编译进二进制）、MCP 协议（23 个工具）、REST API + Web Dashboard。
+
+\texttt{besure setup} 命令实现一键配置：初始化 vault → 多平台检测 → 幂等注入铁律 → 安装后台服务。支持 OpenClaw、Claude Code、Cursor、Codex、腾讯 CodeBuddy、腾讯 WorkBuddy 等平台。
+
+% ============================================================
+\section{案例研究}
+% ============================================================
+
+在 Besure AI Context 系统自身的开发过程中，我们部署了三个 AI Agent 验证框架有效性。部署三层注入机制前，三个 Agent 在数小时协作开发中 vault 记录几乎为空。部署后，Agent 行为发生显著变化：记录频率提升、颗粒度改善、召回利用率提升。
+
+% ============================================================
+\section{讨论}
+% ============================================================
+
+\subsection{``强制写入'' vs ``智能写入''}
+
+我们选择\textbf{强制}（mandatory）而非\textbf{智能}（intelligent）策略。原因：（1）LLM 的``智能判断''本身就受元认知缺失影响（循环论证）；（2）成本不对称——多记的代价是冗余存储（极低），遗漏的代价是永久丢失（不可逆）；（3）零额外计算成本。
+
+\subsection{从 Agent-centric 到 Memory-centric}
+
+我们提出 Memory-centric 范式：记忆是独立的、持久的基础设施，Agent 是记忆的使用者和贡献者，记忆的生命周期独立于 Agent 的生命周期。
+
+% ============================================================
+\section{结论}
+% ============================================================
+
+本文识别并定义了 LLM Agent 的记忆写入触发问题，提出三层强制记忆注入机制、四态记忆生命周期模型和八维度评估框架。系统已开源：\url{https://github.com/joevise/besureAI}
+
+% ============================================================
+\bibliograph
