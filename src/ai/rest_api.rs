@@ -114,9 +114,9 @@ impl ApiServer {
             .route("/api/entries/:id/append", post(append_entry))
             .route("/api/stats", get(get_stats_handler))
             .route("/api/tags", get(list_tags))
-            // V0.5.5: multi-vault routes
             .route("/api/vaults", get(list_all_vaults))
             .route("/api/vaults/:id/contexts", get(get_vault_contexts))
+            .route("/api/vaults/:id/contexts/:ctxId/stats", get(get_context_stats_handler))
             .route("/api/vaults/:id/log", get(get_vault_log))
             .route("/api/vaults/:id/stats", get(get_vault_stats))
             .route("/api/vaults/:id/unlock", post(unlock_vault))
@@ -498,6 +498,19 @@ async fn get_stats_handler(
     let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let stats = db.get_stats().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(stats), error: None }))
+}
+
+/// Context 详情页 Stats（vault-scoped，含 by_tag，不含 by_context）
+async fn get_context_stats_handler(
+    State(_state): State<Arc<AppState>>,
+    axum::extract::Path((vault_id, context_id)): axum::extract::Path<(String, String)>,
+) -> Result<Json<ApiResponse<crate::storage::db::ContextStats>>, (StatusCode, String)> {
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(&vault_id);
+    let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let stats = db.get_context_stats(&context_id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(stats), error: None }))
 }
 

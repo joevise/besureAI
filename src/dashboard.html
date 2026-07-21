@@ -894,6 +894,48 @@ async function doAppend(entryId){
 
 async function loadStats(){
   try{
+    // Context 详情页：只看当前 project 的 stats（by_tag，无 by_context）
+    if(currentCtx&&currentCtx.id&&currentVault&&currentVault.id){
+      const res=await api('/api/vaults/'+encodeURIComponent(currentVault.id)+'/contexts/'+encodeURIComponent(currentCtx.id)+'/stats');
+      const s=res.data;
+      if(!s){document.getElementById('statsContent').innerHTML='<p>No data</p>';return}
+      let html='<div style="max-width:600px">';
+      html+=`<div style="margin-bottom:16px"><h3 style="color:var(--text);margin-bottom:4px">${esc(currentCtx.title||'')} · ${s.total_entries} entries</h3></div>`;
+      // By Tag — 主导分组
+      html+='<h4 style="color:var(--accent);margin:16px 0 8px">By Tag</h4>';
+      if(s.by_tag&&s.by_tag.length){
+        const maxTag=Math.max(...s.by_tag.map(x=>x[1]),1);
+        s.by_tag.forEach(([tag,count])=>{
+          html+=`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:120px;font-size:12px;color:var(--text2)">🏷 ${esc(tag)}</span><div style="height:20px;background:var(--accent);border-radius:4px;width:${count/maxTag*200}px;min-width:30px"></div><span style="font-size:12px;color:var(--text2)">${count}</span></div>`;
+        });
+      }else{
+        html+='<div style="font-size:12px;color:var(--text2);margin:4px 0">暂无标签（新 add 会自动打标，存量用 besure retag 补）</div>';
+      }
+      // By Type
+      html+='<h4 style="color:var(--accent);margin:16px 0 8px">By Type</h4>';
+      const maxType=Math.max(...s.by_type.map(x=>x[1]),1);
+      s.by_type.forEach(([type,count])=>{
+        html+=`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:100px;font-size:12px;color:var(--text2)">${type}</span><div style="height:20px;background:var(--green);border-radius:4px;width:${count/maxType*200}px;min-width:30px"></div><span style="font-size:12px;color:var(--text2)">${count}</span></div>`;
+      });
+      // By Status
+      html+='<h4 style="color:var(--accent);margin:16px 0 8px">By Status</h4>';
+      const maxStatus=Math.max(...s.by_status.map(x=>x[1]),1);
+      s.by_status.forEach(([status,count])=>{
+        html+=`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:100px;font-size:12px;color:var(--text2)">${status}</span><div style="height:20px;background:var(--grey);border-radius:4px;width:${count/maxStatus*200}px;min-width:30px"></div><span style="font-size:12px;color:var(--text2)">${count}</span></div>`;
+      });
+      const pct=s.total_entries>0?Math.round(s.resolved_count/s.total_entries*100):0;
+      html+=`<div style="margin-top:16px;padding:12px;background:var(--surface2);border-radius:8px"><b>Resolved:</b> ${s.resolved_count} / ${s.total_entries} (${pct}%)</div>`;
+      if(s.recent_activity&&s.recent_activity.length){
+        html+='<h4 style="color:var(--accent);margin:16px 0 8px">Recent Activity (7 days)</h4>';
+        s.recent_activity.forEach(([date,count])=>{
+          html+=`<div style="font-size:12px;color:var(--text2);margin:2px 0">${date}: ${count} entries</div>`;
+        });
+      }
+      html+='</div>';
+      document.getElementById('statsContent').innerHTML=html;
+      return;
+    }
+    // 全局（未选中 context）：保留 By Context
     const res=await api('/api/stats');
     const s=res.data;
     if(!s){document.getElementById('statsContent').innerHTML='<p>No data</p>';return}

@@ -615,6 +615,78 @@ impl Database {
             recent_activity,
         })
     }
+
+    /// 获取单个 Context 的统计（含 by_tag，不含 by_context）
+    pub fn get_context_stats(&self, context_id: &str) -> Result<ContextStats> {
+        let total_entries: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM entries WHERE context_id = ?1",
+            params![context_id],
+            |row| row.get(0),
+        )?;
+
+        // By Tag — 从 entries.tags JSON 数组里拆解
+        let entries = self.list_entries(context_id)?;
+        let mut tag_counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        for e in &entries {
+            for tag in &e.tags {
+                *tag_counts.entry(tag.clone()).or_insert(0) += 1;
+            }
+        }
+        let mut by_tag: Vec<(String, i64)> = tag_counts.into_iter().collect();
+        by_tag.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // By Type
+        let mut stmt = self.conn.prepare(
+            "SELECT entry_type, COUNT(*) FROM entries WHERE context_id = ?1 GROUP BY entry_type ORDER BY COUNT(*) DESC",
+        )?;
+        let by_type = stmt
+            .query_map(params![context_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // By Status
+        let mut stmt = self.conn.prepare(
+            "SELECT status, COUNT(*) FROM entries WHERE context_id = ?1 GROUP BY status ORDER BY COUNT(*) DESC",
+        )?;
+        let by_status = stmt
+            .query_map(params![context_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Resolved
+        let resolved_count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM entries WHERE context_id = ?1 AND resolved = 1",
+            params![context_id],
+            |row| row.get(0),
+        )?;
+
+        // Recent activity (7 days)
+        let seven_days_ago = (chrono::Utc::now() - chrono::Duration::days(7))
+            .format("%Y-%m-%d")
+            .to_string();
+        let mut stmt = self.conn.prepare(
+            "SELECT substr(date, 1, 10) AS d, COUNT(*) FROM entries WHERE context_id = ?1 AND substr(date, 1, 10) >= ?2 GROUP BY d ORDER BY d DESC",
+        )?;
+        let recent_activity = stmt
+            .query_map(params![context_id, seven_days_ago], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(ContextStats {
+            total_entries,
+            by_tag,
+            by_type,
+            by_status,
+            resolved_count,
+            recent_activity,
+        })
+    }
 }
 
 /// Filter for unified entry queries
@@ -642,6 +714,18 @@ pub struct Stats {
     pub total_contexts: i64,
     pub total_entries: i64,
     pub by_context: Vec<(String, i64)>,
+    pub by_type: Vec<(String, i64)>,
+    pub by_status: Vec<(String, i64)>,
+    pub resolved_count: i64,
+    pub recent_activity: Vec<(String, i64)>,
+}
+
+/// 单个 Context 的统计（用于 Context 详情页 Stats tab）
+/// 不含 by_context（在 context 内看 context 分布无意义），含 by_tag
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ContextStats {
+    pub total_entries: i64,
+    pub by_tag: Vec<(String, i64)>,
     pub by_type: Vec<(String, i64)>,
     pub by_status: Vec<(String, i64)>,
     pub resolved_count: i64,
