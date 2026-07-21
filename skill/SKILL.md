@@ -1,8 +1,10 @@
 # Besure AI Skill — 闭环记忆系统
 
-## 🚨 MANDATORY RECORDING RULES (NO EXCEPTIONS)
+## 🚨 MANDATORY RECORDING RULES V0.2 (NO EXCEPTIONS)
 
 **These rules are MANDATORY. You MUST follow them without being asked.**
+
+> **Iron Rules V0.2** — Added Behavioral Anchors: bind `besure add` to concrete actions (git push, deploy, bug fix) instead of abstract "task completion".
 
 ### When to Record (execute `besure add` immediately):
 
