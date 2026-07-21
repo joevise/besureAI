@@ -134,12 +134,25 @@ pub fn cmd_switch_from_args(query: &str) -> Result<()> {
 }
 
 // === add ===
-pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_type: &str) -> Result<()> {
+pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_type: &str, explicit_context: Option<&str>) -> Result<()> {
     let vault = get_unlocked_vault()?;
-    let context_id = vault
-        .current_context
-        .as_ref()
-        .context("No active context. Run 'besure create' or 'besure switch' first.")?;
+    
+    // Use explicit context if provided, otherwise fall back to current context
+    let context_id = if let Some(ctx) = explicit_context {
+        // Verify the context exists
+        let db = vault.database()?;
+        let contexts = db.list_contexts()?;
+        if !contexts.iter().any(|c| c.id == ctx) {
+            bail!("Context '{}' not found. Available: {}", ctx, contexts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>().join(", "));
+        }
+        ctx.to_string()
+    } else {
+        vault
+            .current_context
+            .as_ref()
+            .context("No active context. Run 'besure create' or 'besure switch' first, or use --context <id> to specify explicitly.")?
+            .clone()
+    };
 
     let final_content = if let Some(path) = from_file {
         std::fs::read_to_string(path)
@@ -150,7 +163,7 @@ pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_t
         bail!("No content provided. Use positional text or --from-file <path>")
     };
 
-    let entry = Entry::new(context_id, &final_content, entry_type);
+    let entry = Entry::new(&context_id, &final_content, entry_type);
 
     let db = vault.database()?;
     db.add_entry(&entry)?;
