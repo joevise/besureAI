@@ -453,6 +453,10 @@ const TYPE_ICONS={milestone:'🎯',decision:'⚡',progress:'✅',blocker:'🚫',
 const AGENT_ICONS={openclaw:'🟢',cursor:'🔵',codex:'🟣',vscode:'🟡',custom:'⚪',unknown:'⚪'};
 
 async function api(path,opts={}){
+  // Cache-bust GET requests
+  if(!opts.method||opts.method==='GET'){
+    path+=(path.includes('?')?'&':'?')+'_t='+Date.now();
+  }
   const headers=opts.headers||{};
   if(SESSION_TOKEN)headers['Authorization']='Bearer '+SESSION_TOKEN;
   if(opts.body)headers['Content-Type']='application/json';
