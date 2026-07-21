@@ -399,7 +399,7 @@ pub fn cmd_search_from_args(query: &str, semantic: bool) -> Result<()> {
 }
 
 // === export ===
-pub fn cmd_export_from_args(context: &str, output: Option<&str>) -> Result<()> {
+pub fn cmd_export_from_args(context: &str, output: Option<&str>, password: Option<&str>, format: &str) -> Result<()> {
     let vault = get_unlocked_vault()?;
     let db = vault.database()?;
 
@@ -421,20 +421,66 @@ pub fn cmd_export_from_args(context: &str, output: Option<&str>) -> Result<()> {
         found[num - 1].clone()
     };
 
-    let entries = db.list_entries(&ctx.id)?;
+    match format {
+        "besure" => {
+            let password = match password {
+                Some(p) => p.to_string(),
+                None => {
+                    let pw = read_password("Export password: ")?;
+                    if pw.is_empty() {
+                        bail!("Password cannot be empty.");
+                    }
+                    pw
+                }
+            };
+            let output = output
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{}.besure", ctx.id));
+            let output_path = PathBuf::from(&output);
+            let count = besure_lib::export::export_encrypted(&db, &ctx.id, &password, &output_path)?;
+            println!(
+                "✓ Exported '{}' to {} ({} entries, AES-256-GCM encrypted)",
+                ctx.title, output, count
+            );
+        }
+        "md" | "markdown" => {
+            let entries = db.list_entries(&ctx.id)?;
+            let output = output
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{}.md", ctx.id));
+            let output_path = PathBuf::from(&output);
+            vault.export_context(&ctx, &entries, &output_path)?;
+            println!(
+                "✓ Exported '{}' to {} ({} entries)",
+                ctx.title,
+                output,
+                entries.len()
+            );
+        }
+        other => bail!("Unknown export format '{}'. Use 'besure' or 'md'.", other),
+    }
+    Ok(())
+}
 
-    let output = output
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("{}.md", ctx.id));
+// === import ===
+pub fn cmd_import_from_args(file: &str, password: Option<&str>) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
 
-    let output_path = PathBuf::from(&output);
-    vault.export_context(&ctx, &entries, &output_path)?;
+    let password = match password {
+        Some(p) => p.to_string(),
+        None => read_password("Import password: ")?,
+    };
+
+    let file_path = PathBuf::from(file);
+    let result = besure_lib::export::import_encrypted(&db, &file_path, &password)?;
 
     println!(
-        "✓ Exported '{}' to {} ({} entries)",
-        ctx.title,
-        output,
-        entries.len()
+        "✓ Imported context '{}' ({}) — {} entries imported, {} skipped (already exist)",
+        result.context.title,
+        result.context.id,
+        result.entries_imported,
+        result.entries_skipped
     );
     Ok(())
 }

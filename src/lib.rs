@@ -2,6 +2,7 @@
 // Exposes core modules for both the CLI binary and the Tauri desktop app
 
 pub mod crypto;
+pub mod export;
 pub mod storage;
 pub mod ai;
 pub mod dashboard;

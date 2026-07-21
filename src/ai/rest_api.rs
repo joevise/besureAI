@@ -106,7 +106,6 @@ impl ApiServer {
             .route("/api/contexts/:id", get(get_context))
             .route("/api/contexts/:id/entries", post(add_entry))
             .route("/api/contexts/:id/log", get(get_log))
-            .route("/api/contexts/:id/export", get(export_context))
             .route("/api/search", get(search))
             .route("/api/status", get(status))
             .route("/api/query", get(query_entries))
@@ -120,6 +119,8 @@ impl ApiServer {
             .route("/api/vaults/:id/log", get(get_vault_log))
             .route("/api/vaults/:id/stats", get(get_vault_stats))
             .route("/api/vaults/:id/unlock", post(unlock_vault))
+            .route("/api/vaults/:id/contexts/:ctxId/export", get(export_context_encrypted))
+            .route("/api/vaults/:id/import", post(import_vault))
             .with_state(Arc::new(state));
 
         let addr = format!("0.0.0.0:{}", self.port);
@@ -422,26 +423,71 @@ async fn status(
     }))
 }
 
-async fn export_context(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> Result<axum::response::Response<String>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let ctx = db.get_context(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, format!("not found")))?;
-    let entries = db.list_entries(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let mut md = format!("# {}\n\n## 进展时间线\n\n", ctx.title);
-    for entry in entries.iter().rev() {
-        md.push_str(&format!("### {} ({})\n{}\n\n", entry.date, entry.entry_type, entry.content));
+#[derive(Deserialize)]
+struct ExportQuery {
+    password: Option<String>,
+}
+
+/// Vault-scoped encrypted export: GET /api/vaults/:id/contexts/:ctxId/export?password=xxx
+/// Returns .besure binary (AES-256-GCM encrypted JSON payload).
+async fn export_context_encrypted(
+    State(_state): State<Arc<AppState>>,
+    axum::extract::Path((vault_id, ctx_id)): axum::extract::Path<(String, String)>,
+    Query(query): Query<ExportQuery>,
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    let password = query.password
+        .filter(|p| !p.is_empty())
+        .ok_or((StatusCode::BAD_REQUEST, "missing password".to_string()))?;
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(&vault_id);
+    if !vault_path.exists() {
+        return Err((StatusCode::NOT_FOUND, format!("vault '{}' not found", vault_id)));
     }
-    md.push_str("---\n*Exported from Besure AI*");
-    Ok(axum::response::Response::builder()
+    let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (bytes, _count) = crate::export::export_bytes(&db, &ctx_id, &password)
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+    axum::response::Response::builder()
         .status(StatusCode::OK)
-        .header("Content-Type", "text/markdown; charset=utf-8")
-        .body(md)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?)
+        .header("Content-Type", "application/octet-stream")
+        .header("Content-Disposition", format!("attachment; filename=\"{}.besure\"", ctx_id))
+        .body(axum::body::Body::from(bytes))
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[derive(Deserialize)]
+struct ImportBody {
+    password: String,
+    file_base64: String,
+}
+
+/// Vault-scoped import: POST /api/vaults/:id/import  body: {password, file_base64}
+async fn import_vault(
+    State(_state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(body): Json<ImportBody>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, String)> {
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(&id);
+    if !vault_path.exists() {
+        return Err((StatusCode::NOT_FOUND, format!("vault '{}' not found", id)));
+    }
+    let data = crate::export::b64_decode(&body.file_base64)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid base64: {}", e)))?;
+    let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let result = crate::export::import_bytes(&db, &data, &body.password)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "context_id": result.context.id,
+            "context_title": result.context.title,
+            "entries_imported": result.entries_imported,
+            "entries_skipped": result.entries_skipped,
+        })),
+        error: None,
+    }))
 }
 
 // === V0.4 new handlers ===

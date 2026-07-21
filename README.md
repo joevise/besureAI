@@ -8,6 +8,8 @@
 
 **Rust-powered · Local-first · End-to-end encrypted · MCP-native · Single binary**
 
+**Current version: 0.58.0** — Emergent auto-tagging; Config concept removed (everything is an entry + auto tags).
+
 ---
 
 ## Why Besure AI Context?
@@ -24,6 +26,20 @@ You work on multiple projects. You switch between tasks. Every time you switch, 
 | ☁️ **Cloud dependency & privacy concerns** | 100% local — SQLite + Markdown, zero cloud required |
 | 🔓 **Data security** | AES-256-GCM + Argon2id encryption — keys never touch disk |
 | 📦 **Setup complexity** | Single binary, zero runtime dependencies — `curl | bash` and you're done |
+
+---
+
+## Core Concepts (V0.58)
+
+Besure AI Context has exactly **three** core concepts — nothing else:
+
+| Concept | What it is |
+|---------|-----------|
+| **Context** | An isolated memory space (like a git branch). One per project/task. |
+| **Entry** | A single memory record inside a context. Everything is an entry: progress, decisions, milestones, blockers, notes, lessons, questions. |
+| **Auto Tags** | Every entry is automatically tagged with 1–3 broad flat tags by an LLM at `besure add` time (synchronous). Tags are emergent: a shared `tag_vocab` vocabulary reuses semantically identical tags to prevent synonym explosion. |
+
+> **No Config concept.** As of V0.58, there is no separate "config" feature — everything you used to store as config is just a regular entry, organized and found via auto tags. (App-level LLM/embedding provider settings live in `~/.besure/appconfig.json`, managed via `besure appconfig`.)
 
 ---
 
@@ -88,8 +104,15 @@ besure query --all --keyword "auth"        # All contexts, keyword filter
 # Mark entry as resolved
 besure resolve <entry_id>
 
-# Export a context to share
-besure export "My Project" -o project-context.md
+# Export a context (encrypted .besure, default)
+besure export "My Project" --password *** -o backup.besure
+besure export "My Project" -o backup.besure        # interactive password prompt
+
+# Legacy Markdown export
+besure export "My Project" --format md -o project-context.md
+
+# Import an encrypted .besure file (entries deduped by id)
+besure import backup.besure --password ***
 ```
 
 ### Multi-Vault: One Vault Per Agent (V0.5)
@@ -140,15 +163,42 @@ Add to your MCP config:
 
 Now your AI agent can:
 - **List contexts** → see all your projects
-- **Add entries** → record decisions and progress
+- **Add entries** → record decisions and progress (auto-tagged by LLM)
 - **Search memory** → find relevant past context
 - **Query with filters** → time/type/keyword/resolved filters (V0.4)
+- **List tags** → browse the auto-tag vocabulary (V0.58)
 - **Resolve entries** → mark tasks as done
 - **Append to entries** → supplement existing records
 - **View stats** → overview by tag/type/status (V0.58: By Tag is primary)
 - **Multi-vault** → isolated vaults per agent, shared vault for collaboration (V0.5)
 - **Create contexts** → start new project memory
 - **Export & share** → hand off context to teammates
+
+### MCP Tools (20)
+
+| Tool | Purpose |
+|------|---------|
+| `besure_list_contexts` | List all contexts |
+| `besure_get_context` | Load full context info |
+| `besure_get_status` | Context or global status |
+| `besure_add_entry` | Record progress/decision/milestone/lesson (auto-tagged) |
+| `besure_search` | Full-text search across contexts |
+| `besure_create` | Create a new context |
+| `besure_switch` | Switch active context (fuzzy match) |
+| `besure_export` | Export context (encrypted .besure base64 with password, else Markdown) |
+| `besure_import` | Import encrypted .besure (base64 + password, deduped by entry id) |
+| `besure_link` | Link entries (caused_by/supersedes/related_to/...) |
+| `besure_expire` | Mark entry expired |
+| `besure_supersede` | Mark old entry superseded by new |
+| `besure_recall` | Recall entries needing attention |
+| `besure_query` | Unified query (time/type/context/keyword/resolved) |
+| `besure_resolve` | Mark entry resolved |
+| `besure_append` | Append content to an entry |
+| `besure_stats` | Statistics overview |
+| `besure_vaults` | List all vaults (requires `BESURE_VAULTS_ALL=true`) |
+| `besure_share` | Push entry to shared vault |
+| `besure_shared` | View shared vault contents |
+| `besure_list_tags` | List auto-tag vocabulary (tag + usage count) |
 
 ---
 
@@ -159,7 +209,12 @@ besure serve --port 7788
 # → Open http://localhost:7788
 ```
 
-A built-in web UI for browsing contexts, viewing timelines, and managing entries. Password-protected with your master password.
+A built-in web UI for browsing contexts, viewing timelines, filtering by tag, and managing entries. The Stats page is organized **By Tag** (V0.58).
+
+**Dashboard password security:**
+- If your vault is encrypted, the Dashboard requires your master password.
+- For unencrypted vaults (or to use a separate Dashboard-only password), set the environment variable `BESURE_DASHBOARD_PASSWORD` before starting the server — it takes priority over vault auth.
+- ⚠️ If the vault is unencrypted **and** `BESURE_DASHBOARD_PASSWORD` is not set, the Dashboard accepts any password (insecure — a warning is printed on startup). Always set one of the two when exposing the Dashboard beyond localhost.
 
 ---
 
@@ -221,6 +276,11 @@ besure add <content>              Auto-tags entry with 1-3 broad tags (sync, LLM
 besure tags                       Show tag vocabulary (tag + usage count)
 besure retag [--all] [--context <id>]  Re-tag existing entries
 
+# === App Config (LLM / embedding providers) ===
+besure appconfig <key> <value>    Set app-level config, e.g.:
+                                  llm.provider / llm.api_url / llm.api_key / llm.model
+                                  embedding.provider / embedding.api_url / embedding.api_key / embedding.model
+
 # === Closure (V3) ===
 besure link <id> --to <id>        Link entries (caused_by/supersedes/related_to)
 besure expire <id>                Mark entry as expired
@@ -230,7 +290,9 @@ besure recall                     Recall entries needing attention
 # === Server ===
 besure serve [--port 7788]        Start web dashboard + REST API
 besure mcp                        Start MCP server (stdio, 20 tools)
-besure export <context>           Export to Markdown
+besure export <context>           Export to encrypted .besure (default)
+besure export <context> --format md   Export to Markdown (legacy)
+besure import <file.besure>       Import encrypted .besure (dedupes by id)
 ```
 
 ---

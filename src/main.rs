@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.58.0",
+    version = "0.59.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -98,6 +98,22 @@ enum Commands {
         context: String,
         #[arg(short = 'o', long = "output")]
         output: Option<String>,
+        /// Encryption password (will prompt if not provided)
+        #[arg(long)]
+        password: Option<String>,
+        /// Export format: besure (encrypted, default) or md (Markdown)
+        #[arg(long, default_value = "besure")]
+        format: String,
+    },
+
+    /// Import an encrypted .besure file
+    #[command(name = "import")]
+    Import {
+        /// Path to .besure file
+        file: String,
+        /// Password (will prompt if not provided)
+        #[arg(long)]
+        password: Option<String>,
     },
 
     /// Unlock vault
@@ -311,8 +327,11 @@ fn main() -> anyhow::Result<()> {
         Commands::Search { query, semantic } => {
             cli::commands::cmd_search_from_args(&query, semantic)
         }
-        Commands::Export { context, output } => {
-            cli::commands::cmd_export_from_args(&context, output.as_deref())
+        Commands::Export { context, output, password, format } => {
+            cli::commands::cmd_export_from_args(&context, output.as_deref(), password.as_deref(), &format)
+        }
+        Commands::Import { file, password } => {
+            cli::commands::cmd_import_from_args(&file, password.as_deref())
         }
         Commands::Unlock => cli::commands::cmd_unlock(),
         Commands::Lock => cli::commands::cmd_lock(),

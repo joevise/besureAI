@@ -54,7 +54,7 @@ The fix: record AS PART OF the commit/deploy workflow, not as a separate "I'll d
 ## When to Use
 - 用户说"切换到XX项目" / "记一下XX" / "搜一下之前XX的记录"
 - 需要跨任务/项目隔离上下文信息
-- 需要记录进展、决策、阻碍、配置、教训
+- 需要记录进展、决策、阻碍、笔记、教训
 - 对话中需要搜索历史记录
 - 需要关联记忆（因果/替代/引用）
 - 需要标记过期/被替代的决策
@@ -211,8 +211,9 @@ besure retag --all              # 全库
 
 要点：
 - 标签库存 `tag_vocab` 表：新标签先匹配已有库，语义相同复用（避免"前端"/"frontend"同义词爆炸），没有才新建
-- LLM 不可用（provider=dummy / 无 api_url / 请求失败）时**降级跳过**，绝不阻塞 add
-- 打标复用 `~/.besure/appconfig.json` 的 `llm` 配置（同 absorb）
+- LLM 不可用（provider=dummy / 无 api_url / 请求失败）时**降级跳过打标**，绝不阻塞 add
+- 打标复用 `~/.besure/appconfig.json` 的 `llm` 配置（同 absorb），key 为 `llm.provider` / `llm.api_url` / `llm.api_key` / `llm.model`，用 `besure appconfig <key> <value>` 设置
+- **没有 config 命令**：V0.58 起砍掉 context 级 `besure config set/get/list`（MCP 的 `besure_config_*` 同步移除）。以前当配置存的内容直接 `besure add`，靠自动标签检索
 - Dashboard 每条 entry 显示标签，可按标签筛选（前端过滤）
 - MCP tool `besure_list_tags` 返回标签库；REST `GET /api/tags`
 

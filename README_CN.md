@@ -8,6 +8,8 @@
 
 **Rust 引擎 · 本地部署 · 端到端加密 · MCP 原生 · 单二进制**
 
+**当前版本：0.58.0** — 涌现式自动标签；砍掉 Config 概念（一切归于 entry + 自动标签）。
+
 [English](README.md) | 中文
 
 ---
@@ -26,6 +28,20 @@
 | ☁️ **云依赖和隐私担忧** | 100% 本地——SQLite + Markdown，零云服务 |
 | 🔓 **数据安全** | AES-256-GCM + Argon2id 加密——密钥永不落盘 |
 | 📦 **部署复杂** | 单二进制，零运行时依赖——`curl | bash` 即装即用 |
+
+---
+
+## 核心概念（V0.58）
+
+Besure AI Context 只有**三个**核心概念：
+
+| 概念 | 说明 |
+|------|------|
+| **Context（上下文）** | 隔离的记忆空间（类似 git branch），一个项目/任务一个。 |
+| **Entry（记录）** | 上下文里的单条记忆。一切都是 entry：进展、决策、里程碑、阻碍、笔记、教训、问题。 |
+| **自动标签（Auto Tags）** | `besure add` 时由 LLM 同步自动打 1-3 个扁平大类标签。标签是涌现式的：共享 `tag_vocab` 标签库复用语义相同的标签，防止同义词爆炸。 |
+
+> **没有 Config 概念。** V0.58 起不再有独立的 "config" 功能——以前当配置存的东西就是普通 entry，靠自动标签组织和检索。（App 级的 LLM/embedding provider 设置存放在 `~/.besure/appconfig.json`，用 `besure appconfig` 管理。）
 
 ---
 
@@ -144,15 +160,41 @@ Besure AI Context 内置 MCP（Model Context Protocol）Server，任何支持 MC
 
 AI Agent 可以：
 - **列出上下文** → 看到所有项目
-- **添加记录** → 自动记录决策和进展
+- **添加记录** → 自动记录决策和进展（LLM 自动打标）
 - **搜索记忆** → 找到相关的历史上下文
 - **统一查询** → 按时间/类型/关键词/resolved 过滤（V0.4）
+- **查看标签库** → 浏览自动标签词汇表（V0.58）
 - **标记完成** → resolve 标记已解决的事项
 - **追加内容** → 往已有记录补充信息
-- **统计概览** → 按上下文/类型/状态查看分布
+- **统计概览** → 按标签/类型/状态查看分布（V0.58 起 Stats 以 By Tag 为主）
 - **多 Vault** → 每个 Agent 独立隔离，共享需显式推送（V0.5）
 - **创建上下文** → 开始新项目记忆
 - **导出分享** → 交接给同事
+
+### MCP Tools（20 个）
+
+| Tool | 用途 |
+|------|------|
+| `besure_list_contexts` | 列出所有上下文 |
+| `besure_get_context` | 加载完整上下文信息 |
+| `besure_get_status` | 上下文或全局状态 |
+| `besure_add_entry` | 记录进展/决策/里程碑/教训（自动打标） |
+| `besure_search` | 全文搜索 |
+| `besure_create` | 创建新上下文 |
+| `besure_switch` | 切换上下文（模糊匹配） |
+| `besure_export` | 导出上下文为 Markdown |
+| `besure_link` | 建立 entry 关联（caused_by/supersedes/related_to/...） |
+| `besure_expire` | 标记 entry 过期 |
+| `besure_supersede` | 标记旧 entry 被新 entry 替代 |
+| `besure_recall` | 召回需要注意的记忆 |
+| `besure_query` | 统一查询（时间/类型/上下文/关键词/resolved） |
+| `besure_resolve` | 标记 entry 完成 |
+| `besure_append` | 追加内容到已有 entry |
+| `besure_stats` | 统计概览 |
+| `besure_vaults` | 列出所有 vault（需 `BESURE_VAULTS_ALL=true`） |
+| `besure_share` | 推送 entry 到共享 vault |
+| `besure_shared` | 查看共享 vault 内容 |
+| `besure_list_tags` | 列出自动标签库（标签 + 使用次数） |
 
 ---
 
@@ -163,7 +205,12 @@ besure serve --port 7788
 # → 浏览器打开 http://localhost:7788
 ```
 
-内置 Web 界面，浏览上下文、查看时间线、管理记录。主密码保护。
+内置 Web 界面，浏览上下文、查看时间线、按标签筛选、管理记录。Stats 页已改为 **By Tag**（V0.58）。
+
+**Dashboard 密码安全：**
+- vault 加密时，Dashboard 使用主密码登录。
+- vault 未加密（或想用独立的 Dashboard 密码）时，启动服务前设置环境变量 `BESURE_DASHBOARD_PASSWORD`——它优先于 vault 认证。
+- ⚠️ 如果 vault 未加密**且**未设置 `BESURE_DASHBOARD_PASSWORD`，Dashboard 会接受任意密码（不安全，启动时会打印警告）。只要 Dashboard 暴露范围超出本机，务必二选一设置。
 
 ---
 
@@ -221,10 +268,14 @@ besure share-context <ctx_id>     推送整个上下文
 besure shared [--keyword <kw>]    查看共享内容
 
 # === 自动标签（V0.58）===
-# === 自动标签（V0.58）===
 besure add <content>              添加时自动打 1-3 个大类标签（同步 LLM 调用）
 besure tags                       查看标签库（标签 + 使用次数）
 besure retag [--all] [--context <id>]  给存量 entry 补标签
+
+# === App 配置（LLM / embedding provider）===
+besure appconfig <key> <value>    设置 app 级配置，如：
+                                  llm.provider / llm.api_url / llm.api_key / llm.model
+                                  embedding.provider / embedding.api_url / embedding.api_key / embedding.model
 
 # === 闭环（V3）===
 besure link <id> --to <id>        关联记录（caused_by/supersedes/related_to）

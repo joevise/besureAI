@@ -62,7 +62,7 @@ impl McpServer {
                     },
                     "serverInfo": {
                         "name": "besure",
-                        "version": "0.58.0"
+                        "version": "0.59.0"
                     }
                 }
             }),
@@ -169,14 +169,27 @@ impl McpServer {
             }),
             json!({
                 "name": "besure_export",
-                "description": "导出上下文为 Markdown",
+                "description": "导出上下文。带 password 时导出为 AES-256-GCM 加密的 .besure（返回 base64）；不带 password 导出为 Markdown。",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "id": {"type": "string", "description": "上下文 ID"},
-                        "output": {"type": "string", "description": "输出文件路径"}
+                        "output": {"type": "string", "description": "输出文件路径（可选）"},
+                        "password": {"type": "string", "description": "加密密码（提供则导出加密 .besure）"}
                     },
                     "required": ["id"]
+                }
+            }),
+            json!({
+                "name": "besure_import",
+                "description": "导入加密 .besure 文件（base64 内容 + 密码）到当前 vault，entry 按 id 去重",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "file_base64": {"type": "string", "description": ".besure 文件的 base64 内容"},
+                        "password": {"type": "string", "description": "解密密码"}
+                    },
+                    "required": ["file_base64", "password"]
                 }
             }),
             json!({
@@ -316,6 +329,7 @@ impl McpServer {
             "besure_create" => Self::tool_create(&args),
             "besure_switch" => Self::tool_switch(&args),
             "besure_export" => Self::tool_export(&args),
+            "besure_import" => Self::tool_import(&args),
             "besure_link" => Self::tool_link(&args),
             "besure_expire" => Self::tool_expire(&args),
             "besure_supersede" => Self::tool_supersede(&args),
@@ -544,11 +558,23 @@ impl McpServer {
     fn tool_export(args: &Value) -> Result<String, String> {
         let vault = Self::get_vault()?;
         let id = args.get("id").and_then(|i| i.as_str()).ok_or("missing 'id'")?;
+        let db = vault.database().map_err(|e| e.to_string())?;
+
+        if let Some(password) = args.get("password").and_then(|p| p.as_str()).filter(|p| !p.is_empty()) {
+            // Encrypted .besure export → base64
+            let (bytes, count) = crate::export::export_bytes(&db, id, password).map_err(|e| e.to_string())?;
+            if let Some(output) = args.get("output").and_then(|o| o.as_str()) {
+                std::fs::write(output, &bytes).map_err(|e| e.to_string())?;
+                return Ok(format!("✓ Exported {} entries to {} (AES-256-GCM encrypted)\nbase64:\n{}", count, output, crate::export::b64_encode(&bytes)));
+            }
+            return Ok(format!("✓ Exported {} entries (AES-256-GCM encrypted .besure, base64):\n{}", count, crate::export::b64_encode(&bytes)));
+        }
+
+        // Legacy Markdown export
         let default_output = format!("{}.md", id);
         let output = args.get("output").and_then(|o| o.as_str())
             .unwrap_or(&default_output);
 
-        let db = vault.database().map_err(|e| e.to_string())?;
         let ctx = db.get_context(id).map_err(|e| e.to_string())?
             .ok_or(format!("context '{}' not found", id))?;
         let entries = db.list_entries(id).map_err(|e| e.to_string())?;
@@ -557,6 +583,21 @@ impl McpServer {
         vault.export_context(&ctx, &entries, &output_path).map_err(|e| e.to_string())?;
 
         Ok(format!("✓ Exported '{}' to {} ({} entries)", ctx.title, output, entries.len()))
+    }
+
+    fn tool_import(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let file_base64 = args.get("file_base64").and_then(|s| s.as_str()).ok_or("missing 'file_base64'")?;
+        let password = args.get("password").and_then(|p| p.as_str()).ok_or("missing 'password'")?;
+
+        let data = crate::export::b64_decode(file_base64).map_err(|e| e.to_string())?;
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let result = crate::export::import_bytes(&db, &data, password).map_err(|e| e.to_string())?;
+
+        Ok(format!(
+            "✓ Imported context '{}' ({}) — {} entries imported, {} skipped (already exist)",
+            result.context.title, result.context.id, result.entries_imported, result.entries_skipped
+        ))
     }
 
     fn tool_link(args: &Value) -> Result<String, String> {

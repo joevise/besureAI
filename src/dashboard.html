@@ -353,7 +353,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.58.0</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.59.0</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -365,6 +365,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
     <div class="ctx-list" id="ctxList"></div>
     <div class="sidebar-footer">
       <button class="btn btn-primary" onclick="showCreateModal()" style="flex:1">+ New Context</button>
+      <button class="btn" onclick="showImportModal()" title="Import .besure">⇪</button>
       <button class="btn" onclick="refresh()">↻</button>
     </div>
   </div>
@@ -407,6 +408,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
     <div class="modal-field"><label>Tags (comma separated)</label><input type="text" id="createTags" placeholder="rust, mcp, saas"></div>
     <div class="modal-field"><label>Summary</label><textarea id="createSummary" rows="2" placeholder="One-line description"></textarea></div>
     <div class="modal-actions"><button class="btn" onclick="hideModal('createModal')">Cancel</button><button class="btn btn-primary" onclick="doCreate()">Create</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <h3>Import .besure File</h3>
+    <div class="modal-field"><label>File *</label><input type="file" id="importFile" accept=".besure"></div>
+    <div class="modal-field"><label>Password *</label><input type="password" id="importPassword" placeholder="Export password"></div>
+    <div class="modal-actions"><button class="btn" onclick="hideModal('importModal')">Cancel</button><button class="btn btn-primary" onclick="doImport()">Import</button></div>
   </div>
 </div>
 
@@ -849,7 +859,49 @@ async function doAddEntry(){
   }catch(e){alert('Add failed: '+e.message)}
 }
 
-function exportCtx(id){window.open(`/api/contexts/${id}/export`,'_blank')}
+async function exportCtx(id){
+  if(!currentVault){alert('No vault selected');return}
+  const pw=prompt('Export password (encrypts the .besure file):');
+  if(!pw)return;
+  try{
+    const res=await fetch(`/api/vaults/${encodeURIComponent(currentVault.id)}/contexts/${encodeURIComponent(id)}/export?password=${encodeURIComponent(pw)}`,{
+      headers:SESSION_TOKEN?{'Authorization':'Bearer '+SESSION_TOKEN}:{}
+    });
+    if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));alert('Export failed: '+(e.error||res.statusText));return}
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=id+'.besure';
+    document.body.appendChild(a);a.click();a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){alert('Export failed: '+e.message)}
+}
+
+function showImportModal(){
+  if(!currentVault){alert('Select a vault first');return}
+  showModal('importModal');
+}
+
+async function doImport(){
+  const file=document.getElementById('importFile').files[0];
+  const pw=document.getElementById('importPassword').value;
+  if(!file){alert('Please choose a .besure file');return}
+  if(!pw){alert('Please enter the password');return}
+  try{
+    const buf=await file.arrayBuffer();
+    let binary='';
+    const bytes=new Uint8Array(buf);
+    const chunk=0x8000;
+    for(let i=0;i<bytes.length;i+=chunk){binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk))}
+    const file_base64=btoa(binary);
+    const res=await api(`/api/vaults/${encodeURIComponent(currentVault.id)}/import`,{method:'POST',body:JSON.stringify({password:pw,file_base64})});
+    hideModal('importModal');
+    document.getElementById('importFile').value='';document.getElementById('importPassword').value='';
+    const d=res.data||{};
+    alert(`✓ Imported '${d.context_title}' — ${d.entries_imported} entries imported, ${d.entries_skipped} skipped`);
+    await refresh();
+  }catch(e){alert('Import failed: '+e.message)}
+}
 
 // === V0.4: Resolve / Append / Stats ===
 async function doResolve(entryId){
