@@ -3,78 +3,60 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch:
-
-permissions:
-  contents: write
+      - 'v*'
 
 jobs:
   build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
-            os: macos-14
-            artifact: besure-darwin-arm64
-          - target: x86_64-apple-darwin
-            os: macos-13
-            artifact: besure-darwin-x64
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-24.04-arm
-            artifact: besure-linux-arm64
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-24.04
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
             artifact: besure-linux-x64
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            artifact: besure-windows-x64.exe
+            cross: false
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: besure-linux-arm64
+            cross: true
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: besure-darwin-arm64
+            cross: false
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: besure-darwin-x64
+            cross: false
 
-    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross
 
-      - name: Rename binary (unix)
-        if: runner.os != 'Windows'
+      - name: Build
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Rename binary
         run: |
           cp target/${{ matrix.target }}/release/besure ${{ matrix.artifact }}
           chmod +x ${{ matrix.artifact }}
 
-      - name: Rename binary (windows)
-        if: runner.os == 'Windows'
-        run: |
-          cp target/${{ matrix.target }}/release/besure.exe ${{ matrix.artifact }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Create GitHub Release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
+          files: ${{ matrix.artifact }}
           generate_release_notes: true
-          files: |
-            artifacts/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
