@@ -1406,7 +1406,9 @@ const BESURE_RULES_TEMPLATE: &str = r#"<!-- BESURE-AUTO-START -->
 每次 session 启动时执行：
 ```bash
 export PATH="$HOME/.hermes/node/bin:$PATH"
-echo "besure2026" | besure unlock 2>/dev/null
+export BESURE_VAULT="$HOME/.besure/AGENT_NAME"  # ← 替换 AGENT_NAME
+export BESURE_VAULTS_ALL=true  # 全局视角
+besure unlock 2>/dev/null
 besure status   # 查看当前状态
 besure recall   # 主动召回：即将过期/最近/被替代的记忆
 ```
@@ -1538,7 +1540,7 @@ pub fn cmd_setup(
         // Step 3: Inject rules
         println!("\nStep 3: Inject mandatory recording rules");
         for file in &found_files {
-            inject_rules(file)?;
+            inject_rules(file, agent_name)?;
         }
     }
     println!();
@@ -1553,16 +1555,23 @@ pub fn cmd_setup(
 }
 
 /// Idempotent injection of Besure rules into a file
-fn inject_rules(path: &std::path::Path) -> Result<()> {
+fn inject_rules(path: &std::path::Path, agent_name: Option<&str>) -> Result<()> {
     let content = std::fs::read_to_string(path)?;
     let start_marker = "<!-- BESURE-AUTO-START -->";
     let end_marker = "<!-- BESURE-AUTO-END -->";
 
-    let new_block = format!("{}{}{}", start_marker, BESURE_RULES_TEMPLATE
+    // Replace AGENT_NAME placeholder with actual agent name
+    let template = if let Some(name) = agent_name {
+        BESURE_RULES_TEMPLATE.replace("AGENT_NAME", name)
+    } else {
+        BESURE_RULES_TEMPLATE.to_string()
+    };
+
+    let new_block = format!("{}{}{}", start_marker, template
         .strip_prefix(start_marker)
-        .unwrap_or(BESURE_RULES_TEMPLATE)
+        .unwrap_or(&template)
         .strip_suffix(end_marker)
-        .unwrap_or(BESURE_RULES_TEMPLATE), end_marker);
+        .unwrap_or(&template), end_marker);
 
     if content.contains(start_marker) {
         // Replace existing block
