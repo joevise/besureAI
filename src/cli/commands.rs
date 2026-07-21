@@ -549,8 +549,8 @@ pub fn cmd_absorb_from_args(from: Option<&str>, auto: bool) -> Result<()> {
     Ok(())
 }
 
-// === config set (app config: embedding/llm etc.) ===
-pub fn cmd_config_set(key: &str, value: &str) -> Result<()> {
+// === appconfig set (app-level config: embedding/llm etc.) ===
+pub fn cmd_appconfig_set(key: &str, value: &str) -> Result<()> {
     let mut config = load_config()?;
     match key {
         "embedding.provider" => config.embedding.provider = value.to_string(),
@@ -661,80 +661,6 @@ pub fn cmd_supersede(old_id: &str, new_id: &str) -> Result<()> {
     println!("✓ {} superseded by {}", old_id, new_id);
     println!("  old: {}", truncate(&old_entry.content, 50));
     println!("  new: {}", truncate(&new_entry.content, 50));
-    Ok(())
-}
-
-// === NEW: config entry commands ===
-/// `besure config set <key> <value>` — stores as entry with type "config"
-pub fn cmd_config_set_entry(key: &str, value: &str) -> Result<()> {
-    let vault = get_unlocked_vault()?;
-    let context_id = vault
-        .current_context
-        .as_ref()
-        .context("No active context. Run 'besure switch' first.")?;
-
-    let content = format!("{}: {}", key, value);
-    let entry = Entry::new(context_id, &content, "config");
-
-    let db = vault.database()?;
-    db.add_entry(&entry)?;
-    vault.write_entry_md(&entry)?;
-
-    println!("✓ Config set: {} = {}", key, value);
-    Ok(())
-}
-
-/// `besure config get <key>` — searches config entries by content prefix
-pub fn cmd_config_get(key: &str) -> Result<()> {
-    let vault = get_unlocked_vault()?;
-    let db = vault.database()?;
-    let context_id = vault
-        .current_context
-        .as_ref()
-        .context("No active context")?;
-
-    let entries = db.list_entries(context_id)?;
-    let prefix = format!("{}:", key);
-
-    let found: Vec<_> = entries
-        .iter()
-        .filter(|e| e.entry_type == "config" && e.content.starts_with(&prefix))
-        .collect();
-
-    if found.is_empty() {
-        println!("No config found for key '{}'", key);
-        return Ok(());
-    }
-
-    for entry in found {
-        let value = entry.content.strip_prefix(&prefix).unwrap_or("").trim();
-        println!("{} = {}", key, value);
-    }
-    Ok(())
-}
-
-/// `besure config list` — list all config entries in current context
-pub fn cmd_config_list() -> Result<()> {
-    let vault = get_unlocked_vault()?;
-    let db = vault.database()?;
-    let context_id = vault
-        .current_context
-        .as_ref()
-        .context("No active context")?;
-
-    let entries = db.list_entries(context_id)?;
-    let configs: Vec<_> = entries.iter().filter(|e| e.entry_type == "config").collect();
-
-    if configs.is_empty() {
-        println!("No config entries in current context.");
-        return Ok(());
-    }
-
-    println!("Config ({}):", context_id);
-    for entry in configs {
-        let line = entry.content.clone();
-        println!("  {}", line);
-    }
     Ok(())
 }
 

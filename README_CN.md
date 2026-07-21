@@ -21,7 +21,7 @@
 | 痛点 | 方案 |
 |------|------|
 | 🔀 切换项目时**上下文丢失** | 类似 git branch 的上下文隔离——专注一个，秒级切换 |
-| 🤖 **AI Agent 无法跨会话记忆** | 原生 MCP Server（23 个 tools）——Claude/Cursor/OpenClaw 可直接存取上下文 |
+| 🤖 **AI Agent 无法跨会话记忆** | 原生 MCP Server（20 个 tools）——Claude/Cursor/OpenClaw 可直接存取上下文 |
 | 🔐 **多个 Agent 之间无隔离** | 多 Vault 架构——每个 Agent 拥有物理隔离的独立记忆空间 |
 | ☁️ **云依赖和隐私担忧** | 100% 本地——SQLite + Markdown，零云服务 |
 | 🔓 **数据安全** | AES-256-GCM + Argon2id 加密——密钥永不落盘 |
@@ -221,7 +221,8 @@ besure share-context <ctx_id>     推送整个上下文
 besure shared [--keyword <kw>]    查看共享内容
 
 # === 自动标签（V0.58）===
-besure add <content>              添加时自动打 1-3 个大类标签（同步，LLM）
+# === 自动标签（V0.58）===
+besure add <content>              添加时自动打 1-3 个大类标签（同步 LLM 调用）
 besure tags                       查看标签库（标签 + 使用次数）
 besure retag [--all] [--context <id>]  给存量 entry 补标签
 
@@ -230,12 +231,11 @@ besure link <id> --to <id>        关联记录（caused_by/supersedes/related_to
 besure expire <id>                标记过期
 besure supersede <old> <new>      标记替代
 besure recall                     召回需要注意的记忆
-besure config set/get/list        项目配置
 
 # === 服务 ===
 besure setup [--agent-name <n>]      一键配置：初始化 + Agent 铁律注入
 besure serve [--port 7788]        启动 Web Dashboard + REST API
-besure mcp                        启动 MCP Server（stdio，24 个 tools）
+besure mcp                        启动 MCP Server（stdio，20 个 tools）
 besure export <context>           导出为 Markdown
 ```
 
@@ -278,12 +278,12 @@ Step 3: Inject mandatory recording rules
 |------|------|------|
 | **MVP** | ✅ 完成 | 加密引擎、SQLite、CLI、Markdown 文件 |
 | **V1-V2** | ✅ 完成 | 向量检索、MCP Server（8 tools）、Absorb、REST API、Web Dashboard + 认证 |
-| **V3** | ✅ 完成 | 闭环引擎：关联/过期/替代/召回/项目配置（16 MCP tools） |
+| **V3** | ✅ 完成 | 闭环引擎：关联/过期/替代/召回（16 MCP tools） |
 | **V0.4** | ✅ 完成 | 统一查询（时间/类型/关键词/resolved）、resolve、append、stats（20 MCP tools） |
 | **V0.5** | ✅ 完成 | 多 Vault 架构：物理隔离、全局视角、共享 vault（23 MCP tools） |
 | **V0.5.5** | ✅ 完成 | Dashboard 多 Agent 视角：侧边栏 Agent 列表、切换数据源 |
 | **V0.56** | ✅ 完成 | `besure setup` + 强制记忆铁律：多平台检测、幂等注入 AGENTS.md |
-| **V0.58** | ✅ 完成 | 涌现式自动标签：add 时 LLM 同步打 1-3 个扁平大类标签，tag_vocab 标签库复用防同义词爆炸，`besure tags` / `besure retag`，MCP `besure_list_tags`，REST `/api/tags`，Dashboard 标签筛选（24 个 MCP tools） |
+| **V0.58** | ✅ 完成 | 涌现式自动标签：砍掉 Config 概念，一切归于 entry + 自动扁平大类标签。add 时 LLM 同步打标，tag_vocab 标签库复用防同义词爆炸，`besure tags` / `besure retag`，Dashboard Stats 改为 By Tag（20 MCP tools） |
 | **下一步** | 📋 计划中 | Tauri 桌面 APP、crates.io 发布、GitHub Actions CI、Product Hunt 上线 |
 | **未来** | 📋 计划中 | VS Code 插件、浏览器插件、团队协作 |
 

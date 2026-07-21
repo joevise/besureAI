@@ -142,13 +142,6 @@ enum Commands {
         value: String,
     },
 
-    /// Context-level config entries (stored as entries with type="config")
-    #[command(name = "config")]
-    Config {
-        #[command(subcommand)]
-        action: ConfigAction,
-    },
-
     /// Link an entry to another entry
     #[command(name = "link")]
     Link {
@@ -288,16 +281,6 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
-enum ConfigAction {
-    /// Set a config value: `besure config set <key> <value>`
-    Set { key: String, value: String },
-    /// Get a config value: `besure config get <key>`
-    Get { key: String },
-    /// List all config: `besure config list`
-    List,
-}
-
-#[derive(Subcommand)]
 enum ServiceAction {
     /// Install Dashboard service (auto-start on boot, auto-restart on crash)
     Install,
@@ -347,13 +330,8 @@ fn main() -> anyhow::Result<()> {
             })
         }
         Commands::AppConfig { key, value } => {
-            cli::commands::cmd_config_set(&key, &value)
+            cli::commands::cmd_appconfig_set(&key, &value)
         }
-        Commands::Config { action } => match action {
-            ConfigAction::Set { key, value } => cli::commands::cmd_config_set_entry(&key, &value),
-            ConfigAction::Get { key } => cli::commands::cmd_config_get(&key),
-            ConfigAction::List => cli::commands::cmd_config_list(),
-        },
         Commands::Link { entry_id, to, as_relation } => {
             cli::commands::cmd_link(&entry_id, &to, as_relation.as_deref())
         }

@@ -95,7 +95,7 @@ besure lock
 ```bash
 # 添加进展记录（快速模式）
 besure add "一句话内容" --type progress
-# 类型：init/milestone/decision/progress/blocker/note/config/lesson/question
+# 类型：init/milestone/decision/progress/blocker/note/lesson/question
 
 # 添加多段落 Markdown 记录（生产级颗粒度）
 besure add --from-file entry.md --type decision
@@ -216,21 +216,6 @@ besure retag --all              # 全库
 - Dashboard 每条 entry 显示标签，可按标签筛选（前端过滤）
 - MCP tool `besure_list_tags` 返回标签库；REST `GET /api/tags`
 
-### 项目配置管理
-
-```bash
-# 存储项目配置（仓库地址、服务器、密钥引用等）
-besure config set repo "https://github.com/user/project"
-besure config set server "67.209.190.54:7788"
-besure config set deploy_cmd "ssh root@server && systemctl restart app"
-
-# 读取配置
-besure config get repo
-
-# 列出所有配置
-besure config list
-```
-
 ### 生产级记录格式（推荐）
 
 对重要决策和里程碑，使用 `--from-file` 写多段落 Markdown：
@@ -262,7 +247,6 @@ besure config list
 
 2. **对话过程中**：
    - `besure add "快速记录"` 或 `besure add --from-file entry.md`
-   - `besure config set key value`（项目配置）
    - `besure link <id> --to <id>`（建立关联）
 
 3. **Session 结束前**：
@@ -284,6 +268,6 @@ echo "对话内容..." | besure absorb --auto
 - V0.4 query 默认返回 20 条，紧凑格式（对 Agent 友好）
 - V0.4 resolve 标记完成，append 追加内容（加分隔线+时间戳）
 - DB migration 幂等，多次运行安全
-- MCP Server 24 个 tools（含 query/resolve/append/stats/list_tags）
+- MCP Server 20 个 tools（含 query/resolve/append/stats/list_tags）
 - Dashboard 支持 filter bar、resolved 徽章、append 输入框、Stats Tab、Tags Tab、标签筛选
 - V0.58 自动标签：add 时 LLM 同步打标（1-3 个大类），tag_vocab 复用防同义词；LLM 不可用自动降级

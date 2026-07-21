@@ -19,7 +19,7 @@ You work on multiple projects. You switch between tasks. Every time you switch, 
 | Problem | Solution |
 |---------|----------|
 | 🔀 **Context loss** when switching projects | Git-branch-like context isolation — work on one, switch instantly |
-| 🤖 **AI agents can't remember** across sessions | Native MCP Server (23 tools) — Claude, Cursor, OpenClaw can store & retrieve context |
+| 🤖 **AI agents can't remember** across sessions | Native MCP Server (20 tools) — Claude, Cursor, OpenClaw can store & retrieve context |
 | 🔐 **Multiple agents, no isolation** | Multi-vault architecture — each agent gets its own physically isolated vault |
 | ☁️ **Cloud dependency & privacy concerns** | 100% local — SQLite + Markdown, zero cloud required |
 | 🔓 **Data security** | AES-256-GCM + Argon2id encryption — keys never touch disk |
@@ -145,7 +145,7 @@ Now your AI agent can:
 - **Query with filters** → time/type/keyword/resolved filters (V0.4)
 - **Resolve entries** → mark tasks as done
 - **Append to entries** → supplement existing records
-- **View stats** → overview by context/type/status
+- **View stats** → overview by tag/type/status (V0.58: By Tag is primary)
 - **Multi-vault** → isolated vaults per agent, shared vault for collaboration (V0.5)
 - **Create contexts** → start new project memory
 - **Export & share** → hand off context to teammates
@@ -226,11 +226,10 @@ besure link <id> --to <id>        Link entries (caused_by/supersedes/related_to)
 besure expire <id>                Mark entry as expired
 besure supersede <old> <new>      Mark old entry superseded by new
 besure recall                     Recall entries needing attention
-besure config set/get/list        Project-level config
 
 # === Server ===
 besure serve [--port 7788]        Start web dashboard + REST API
-besure mcp                        Start MCP server (stdio, 24 tools)
+besure mcp                        Start MCP server (stdio, 20 tools)
 besure export <context>           Export to Markdown
 ```
 
@@ -287,12 +286,12 @@ Single binary. Zero external dependencies. Pure Rust.
 |-------|--------|----------|
 | **MVP** | ✅ Done | Crypto engine, SQLite, CLI, Markdown files |
 | **V1-V2** | ✅ Done | Vector search, MCP server (8 tools), Absorb, REST API, Web Dashboard with auth |
-| **V3** | ✅ Done | Closure engine: entry links, expiry, supersede, recall, project config (16 MCP tools) |
+| **V3** | ✅ Done | Closure engine: entry links, expiry, supersede, recall (16 MCP tools) |
 | **V0.4** | ✅ Done | Unified query (time/type/keyword/resolved filters), resolve, append, stats (20 MCP tools) |
 | **V0.5** | ✅ Done | Multi-vault architecture: physical isolation per agent, global view, shared vault (23 MCP tools) |
 | **V0.5.5** | ✅ Done | Dashboard multi-Agent view: sidebar Agent list, data source switching |
 | **V0.56** | ✅ Done | `besure setup` + mandatory recording rules: multi-platform detection, idempotent injection |
-| **V0.58** | ✅ Done | Emergent auto-tagging: LLM tags every entry on add (1-3 flat broad tags), `tag_vocab` table with synonym reuse, `besure tags` / `besure retag`, MCP `besure_list_tags`, REST `/api/tags`, Dashboard tag filter (24 MCP tools) |
+| **V0.58** | ✅ Done | Emergent auto-tagging: removed Config concept — everything is now entries + auto flat broad tags. LLM tags every entry on add (1-3 tags, sync), `tag_vocab` table with synonym reuse, `besure tags` / `besure retag`, Dashboard Stats now By Tag, Dashboard auth fix (BESURE_DASHBOARD_PASSWORD) (20 MCP tools) |
 | **Next** | 📋 Planned | Tauri desktop app, crates.io publish, GitHub Actions CI, Product Hunt launch |
 | **Future** | 📋 Planned | VS Code extension, browser extension, team collaboration |
 

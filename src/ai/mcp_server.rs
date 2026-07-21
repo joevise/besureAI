@@ -216,37 +216,6 @@ impl McpServer {
                 }
             }),
             json!({
-                "name": "besure_config_set",
-                "description": "设置项目配置（仓库/服务器/密钥引用等）",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "key": {"type": "string", "description": "配置键名"},
-                        "value": {"type": "string", "description": "配置值"}
-                    },
-                    "required": ["key", "value"]
-                }
-            }),
-            json!({
-                "name": "besure_config_get",
-                "description": "读取项目配置",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "key": {"type": "string", "description": "配置键名"}
-                    },
-                    "required": ["key"]
-                }
-            }),
-            json!({
-                "name": "besure_config_list",
-                "description": "列出当前上下文的所有配置",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
-            }),
-            json!({
                 "name": "besure_recall",
                 "description": "主动召回：返回即将过期/已过期/最近24h/被替代的记忆",
                 "inputSchema": {
@@ -350,9 +319,6 @@ impl McpServer {
             "besure_link" => Self::tool_link(&args),
             "besure_expire" => Self::tool_expire(&args),
             "besure_supersede" => Self::tool_supersede(&args),
-            "besure_config_set" => Self::tool_config_set(&args),
-            "besure_config_get" => Self::tool_config_get(&args),
-            "besure_config_list" => Self::tool_config_list(&args),
             "besure_recall" => Self::tool_recall(&args),
             "besure_query" => Self::tool_query(&args),
             "besure_resolve" => Self::tool_resolve(&args),
@@ -643,69 +609,7 @@ impl McpServer {
             &new_entry.content[..50.min(new_entry.content.len())]))
     }
 
-    fn tool_config_set(args: &Value) -> Result<String, String> {
-        let mut vault = Self::get_vault()?;
-        let key = args.get("key").and_then(|k| k.as_str()).ok_or("missing 'key'")?;
-        let value = args.get("value").and_then(|v| v.as_str()).ok_or("missing 'value'")?;
-
-        let ctx_id = vault.current_context.as_ref()
-            .ok_or("No active context. Switch to a context first.")?;
-
-        let content = format!("{}: {}", key, value);
-        let entry = Entry::new(ctx_id, &content, "config");
-        let db = vault.database().map_err(|e| e.to_string())?;
-        db.add_entry(&entry).map_err(|e| e.to_string())?;
-
-        Ok(format!("✓ Config set: {} = {}", key, value))
-    }
-
-    fn tool_config_get(args: &Value) -> Result<String, String> {
-        let vault = Self::get_vault()?;
-        let key = args.get("key").and_then(|k| k.as_str()).ok_or("missing 'key'")?;
-        let ctx_id = vault.current_context.as_ref()
-            .ok_or("No active context.")?;
-
-        let db = vault.database().map_err(|e| e.to_string())?;
-        let entries = db.list_entries(ctx_id).map_err(|e| e.to_string())?;
-
-        let prefix = format!("{}:", key);
-        let found: Vec<_> = entries.iter()
-            .filter(|e| e.entry_type == "config" && e.content.starts_with(&prefix))
-            .collect();
-
-        if found.is_empty() {
-            return Err(format!("Config '{}' not found", key));
-        }
-
-        let results: Vec<String> = found.iter()
-            .map(|e| e.content.strip_prefix(&prefix).unwrap_or(&e.content).trim().to_string())
-            .collect();
-        Ok(format!("{} = {}", key, results.join(", ")))
-    }
-
-    fn tool_config_list(args: &Value) -> Result<String, String> {
-        let vault = Self::get_vault()?;
-        let ctx_id = vault.current_context.as_ref()
-            .ok_or("No active context.")?;
-
-        let db = vault.database().map_err(|e| e.to_string())?;
-        let entries = db.list_entries(ctx_id).map_err(|e| e.to_string())?;
-
-        let configs: Vec<_> = entries.iter()
-            .filter(|e| e.entry_type == "config")
-            .collect();
-
-        if configs.is_empty() {
-            return Ok("No config entries.".to_string());
-        }
-
-        let lines: Vec<String> = configs.iter()
-            .map(|e| format!("  {}", e.content))
-            .collect();
-        Ok(format!("Config ({}):\n{}", ctx_id, lines.join("\n")))
-    }
-
-    fn tool_recall(args: &Value) -> Result<String, String> {
+    fn tool_recall(_args: &Value) -> Result<String, String> {
         let vault = Self::get_vault()?;
         let ctx_id = vault.current_context.as_ref()
             .ok_or("No active context.")?;
