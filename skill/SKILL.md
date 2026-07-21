@@ -1,10 +1,12 @@
 # Besure AI Skill — 闭环记忆系统
 
-## 🚨 MANDATORY RECORDING RULES V0.2 (NO EXCEPTIONS)
+## 🚨 MANDATORY RECORDING RULES V0.3 (NO EXCEPTIONS)
 
 **These rules are MANDATORY. You MUST follow them without being asked.**
 
-> **Iron Rules V0.2** — Added Behavioral Anchors: bind `besure add` to concrete actions (git push, deploy, bug fix) instead of abstract "task completion".
+> **Iron Rules V0.3** — Added Anti-cross-contamination rule: always use `--context <id>` with `besure add` to prevent data corruption.
+> V0.2: Behavioral Anchors (git push → add, deploy → add)
+> V0.1: Basic rules (5 mandatory recording scenarios)
 
 ### When to Record (execute `besure add` immediately):
 
@@ -27,6 +29,13 @@ Tie `besure add` to these concrete trigger points — NOT to abstract "task comp
 2. **After every deployment** (copy binary, restart service, curl test) → `besure add`
 3. **After every user request is fully answered** → `besure add` before waiting for next message
 4. **After every bug fix** → `besure add --type lesson` (what was the bug, root cause, fix)
+
+**⚠️ Anti-cross-contamination (CRITICAL):** Always pass `--context <id>` to `besure add`:
+```bash
+besure add "content" --type milestone --context ctx_xxx  # ✅ explicit
+besure add "content" --type milestone                    # ❌ uses global state
+```
+Never rely on "current context" — it's global mutable state that causes data corruption when you forget to switch back.
 
 The danger zone is the "flow state" — when you're coding/debugging, you forget to record.
 The fix: record AS PART OF the commit/deploy workflow, not as a separate "I'll do it later" step.

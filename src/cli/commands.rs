@@ -1443,6 +1443,13 @@ besure recall   # 主动召回：即将过期/最近/被替代的记忆
 3. **每次 bug 修复后** → `besure add --type lesson`（bug 是什么、根因、修复方案）
 4. **每个用户请求完全回答后** → `besure add` 然后等下一条消息
 
+⚠️ **防串线（CRITICAL）**：每次 `besure add` 必须带 `--context <id>` 参数，显式指定写入目标。
+不要依赖"当前上下文"（全局可变状态），切换后忘切回会导致数据写入错误上下文。
+```bash
+besure add "内容" --type milestone --context ctx_xxx  # ✅ 显式指定
+besure add "内容" --type milestone                    # ❌ 危险！依赖全局状态
+```
+
 危险区域：编码/调试心流状态——你会忘记记录。
 修复方法：把 besure add 作为 commit/deploy 工作流的一部分，而不是"等下再记"的独立步骤。
 
