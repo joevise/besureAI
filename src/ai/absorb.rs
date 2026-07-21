@@ -6,11 +6,17 @@ use std::time::Duration;
 /// LLM 配置（用于 absorb 自动提取）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
+    #[serde(default = "llm_default_dummy")]
     pub provider: String,      // "openai" | "minimax" | "dummy"
+    #[serde(default)]
     pub api_url: String,
+    #[serde(default)]
     pub api_key: String,
+    #[serde(default = "llm_default_dummy")]
     pub model: String,
 }
+
+fn llm_default_dummy() -> String { "dummy".to_string() }
 
 impl Default for LlmConfig {
     fn default() -> Self {

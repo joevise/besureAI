@@ -5,12 +5,20 @@ use std::time::Duration;
 /// Embedding 配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingConfig {
+    #[serde(default = "default_dummy")]
     pub provider: String,      // "openai" | "minimax" | "dummy"
+    #[serde(default)]
     pub api_url: String,
+    #[serde(default)]
     pub api_key: String,
+    #[serde(default = "default_dummy")]
     pub model: String,
+    #[serde(default = "default_dimensions")]
     pub dimensions: usize,
 }
+
+fn default_dummy() -> String { "dummy".to_string() }
+fn default_dimensions() -> usize { 64 }
 
 impl Default for EmbeddingConfig {
     fn default() -> Self {

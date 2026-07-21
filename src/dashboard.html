@@ -367,7 +367,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.57.1</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.58.0</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -652,6 +652,12 @@ async function selectCtx(id){
   }catch(e){console.error(e)}
 }
 
+function filterByTag(tag){
+  window._filterTag=tag||null;
+  activeTab='timeline';
+  renderDetail(currentCtx,currentEntries);
+}
+
 function switchTab(tab){
   activeTab=tab;
   renderDetail(currentCtx,currentEntries);
@@ -678,6 +684,9 @@ function renderDetail(ctx,entries){
   if(window._filterType){
     filteredEntries=filteredEntries.filter(e=>window._filterType.includes(e.entry_type));
   }
+  if(window._filterTag){
+    filteredEntries=filteredEntries.filter(e=>(e.tags||[]).includes(window._filterTag));
+  }
   if(window._filterFrom){filteredEntries=filteredEntries.filter(e=>e.date.slice(0,10)>=window._filterFrom)}
   if(window._filterTo){filteredEntries=filteredEntries.filter(e=>e.date.slice(0,10)<=window._filterTo)}
 
@@ -698,6 +707,10 @@ function renderDetail(ctx,entries){
     if(e.valid_until){
       expiryHtml=`<div class="entry-expiry">⏰ expires: ${esc(e.valid_until)}</div>`;
     }
+    let tagsHtml='';
+    if(e.tags&&e.tags.length){
+      tagsHtml='<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">'+e.tags.map(t=>`<span class="tag" style="cursor:pointer" onclick="filterByTag('${esc(t).replace(/'/g,"\\'")}')">🏷 ${esc(t)}</span>`).join('')+'</div>';
+    }
     return `
     <div class="entry stagger${inactiveClass}" style="animation-delay:${i*0.04}s">
       <div class="entry-bar ${e.entry_type}"></div>
@@ -715,18 +728,16 @@ function renderDetail(ctx,entries){
         </div>
         ${linksHtml}
         ${expiryHtml}
+        ${tagsHtml}
       </div>
     </div>`;
   }).join(''):'<div style="padding:24px;text-align:center;color:var(--text3)">No entries match filters</div>';
 
-  // Build config entries HTML
-  let configEntries=entries.filter(e=>e.entry_type==='config');
-  let configHtml=configEntries.length?configEntries.map(e=>{
-    let parts=e.content.split(/:(.*)/s);
-    let key=parts[0]?parts[0].trim():'?';
-    let val=parts[1]?parts[1].trim():'';
-    return `<div class="config-card"><div class="config-key">${esc(key)}</div><div class="config-value">${esc(val)}</div></div>`;
-  }).join(''):'<div style="padding:24px;text-align:center;color:var(--text3)">No config entries</div>';
+  // Build tag cloud (from this context's entries)
+  let tagCounts={};
+  entries.forEach(e=>(e.tags||[]).forEach(t=>{tagCounts[t]=(tagCounts[t]||0)+1}));
+  let tagList=Object.entries(tagCounts).sort((a,b)=>b[1]-a[1]);
+  let tagsTabHtml=tagList.length?`<div style="padding:20px;display:flex;gap:8px;flex-wrap:wrap;align-content:flex-start">`+tagList.map(([t,c])=>`<span class="tag" style="font-size:12px;padding:6px 12px;cursor:pointer" onclick="filterByTag('${esc(t).replace(/'/g,"\\'")}')">🏷 ${esc(t)} <span style="opacity:0.6">×${c}</span></span>`).join('')+`</div>`:'<div style="padding:24px;text-align:center;color:var(--text3)">No tags yet — tags are auto-generated when entries are added (requires LLM config)</div>';
 
   // Filter bar
   let filterHtml=activeTab==='timeline'?`
@@ -745,7 +756,12 @@ function renderDetail(ctx,entries){
         <option value="question">Question</option>
         <option value="config">Config</option>
       </select>
-      <button class="btn btn-sm" onclick="window._filterFrom=null;window._filterTo=null;window._filterType=null;document.getElementById('filterFrom').value='';document.getElementById('filterTo').value='';document.getElementById('filterType').value='';renderDetail(currentCtx,currentEntries)">Clear</button>
+      <select id="filterTag" onchange="window._filterTag=this.value||null;renderDetail(currentCtx,currentEntries)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px">
+        <option value="">All Tags</option>
+        ${tagList.map(([t,c])=>`<option value="${esc(t)}" ${window._filterTag===t?'selected':''}>🏷 ${esc(t)} (${c})</option>`).join('')}
+      </select>
+      ${window._filterTag?`<span class="tag" style="cursor:pointer" onclick="filterByTag(null)">🏷 ${esc(window._filterTag)} ✕</span>`:''}
+      <button class="btn btn-sm" onclick="window._filterFrom=null;window._filterTo=null;window._filterType=null;window._filterTag=null;renderDetail(currentCtx,currentEntries)">Clear</button>
     </div>
   `:'';
 
@@ -753,15 +769,15 @@ function renderDetail(ctx,entries){
   let tabsHtml=`
     <div class="detail-tabs">
       <div class="detail-tab ${activeTab==='timeline'?'active':''}" onclick="switchTab('timeline')">📍 Timeline</div>
-      <div class="detail-tab ${activeTab==='config'?'active':''}" onclick="switchTab('config')">⚙️ Config (${configEntries.length})</div>
+      <div class="detail-tab ${activeTab==='tags'?'active':''}" onclick="switchTab('tags')">🏷 Tags (${tagList.length})</div>
       <div class="detail-tab ${activeTab==='stats'?'active':''}" onclick="switchTab('stats')">📊 Stats</div>
     </div>
   `;
 
   let statsHtml='<div style="padding:24px;color:var(--text3)">Loading stats...</div>';
   let contentHtml;
-  if(activeTab==='config'){
-    contentHtml=`<div class="config-section">${configHtml}</div>`;
+  if(activeTab==='tags'){
+    contentHtml=`<div style="flex:1;overflow-y:auto">${tagsTabHtml}</div>`;
   } else if(activeTab==='stats'){
     contentHtml=`<div id="statsContent" style="padding:24px;color:var(--text3)">Loading stats...</div>`;
   } else {

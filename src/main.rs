@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.57.1",
+    version = "0.58.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -61,6 +61,21 @@ enum Commands {
     /// List all contexts
     #[command(name = "list")]
     List,
+
+    /// Show the auto-tag vocabulary (tag + usage count)
+    #[command(name = "tags")]
+    Tags,
+
+    /// Re-tag existing entries with the LLM tagger
+    #[command(name = "retag")]
+    Retag {
+        /// Retag entries across all contexts
+        #[arg(long, action = ArgAction::SetTrue)]
+        all: bool,
+        /// Retag a specific context (default: current context)
+        #[arg(long = "context")]
+        context: Option<String>,
+    },
 
     /// View context timeline
     #[command(name = "log")]
@@ -305,6 +320,10 @@ fn main() -> anyhow::Result<()> {
             cli::commands::cmd_add_from_args(content.as_deref(), from_file.as_deref(), &entry_type, context.as_deref())
         }
         Commands::List => cli::commands::cmd_list(),
+        Commands::Tags => cli::commands::cmd_tags(),
+        Commands::Retag { all, context } => {
+            cli::commands::cmd_retag(all, context.as_deref())
+        }
         Commands::Log { context } => cli::commands::cmd_log_from_args(context.as_deref()),
         Commands::Search { query, semantic } => {
             cli::commands::cmd_search_from_args(&query, semantic)

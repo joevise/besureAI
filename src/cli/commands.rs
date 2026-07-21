@@ -2,7 +2,7 @@ use anyhow::{bail, Context as AnyhowContext, Result};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use besure_lib::ai::{EmbeddingProvider, embedding::EmbeddingConfig, Absorber, absorb::LlmConfig, VectorStore};
+use besure_lib::ai::{EmbeddingProvider, embedding::EmbeddingConfig, Absorber, absorb::LlmConfig, Tagger, VectorStore};
 use besure_lib::storage::{Vault, Context, Entry, EntryLink, EntryStatus, LinkRelation};
 
 fn read_password(prompt: &str) -> Result<String> {
@@ -165,11 +165,98 @@ pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_t
 
     let entry = Entry::new(&context_id, &final_content, entry_type);
 
+    // 自动打标（同步，LLM 不可用时降级为空标签，绝不阻塞 add）
     let db = vault.database()?;
+    let app_config = load_config().unwrap_or_default();
+    let tagger = Tagger::new(app_config.llm);
+    let existing = db.list_vocab_tags().unwrap_or_default();
+    let tags = tagger.tag(&final_content, &existing).unwrap_or_default();
+
+    let mut entry = entry;
+    entry.tags = tags.clone();
     db.add_entry(&entry)?;
+    if !tags.is_empty() {
+        let _ = db.bump_tags(&tags);
+    }
     vault.write_entry_md(&entry)?;
 
-    println!("✓ Added {} entry to {}", entry_type, context_id);
+    if tags.is_empty() {
+        println!("✓ Added {} entry to {}", entry_type, context_id);
+    } else {
+        println!("✓ Added {} entry to {}  🏷 {}", entry_type, context_id, tags.join(", "));
+    }
+    Ok(())
+}
+
+// === tags ===
+pub fn cmd_tags() -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+    let stats = db.get_vocab_stats()?;
+
+    if stats.is_empty() {
+        println!("No tags yet. Tags are auto-generated when you 'besure add' (requires LLM config).");
+        return Ok(());
+    }
+
+    println!("{:<24} COUNT", "TAG");
+    println!("{}", "-".repeat(40));
+    for (tag, count) in &stats {
+        println!("{:<24} {}", tag, count);
+    }
+    println!("\n{} tags total", stats.len());
+    Ok(())
+}
+
+// === retag ===
+pub fn cmd_retag(all: bool, context: Option<&str>) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    let context_ids: Vec<String> = if all {
+        db.list_contexts()?.into_iter().map(|c| c.id).collect()
+    } else if let Some(q) = context {
+        let found = db.find_contexts_fuzzy(q)?;
+        match found.len() {
+            0 => bail!("No context found matching '{}'", q),
+            _ => vec![found[0].id.clone()],
+        }
+    } else {
+        vec![vault
+            .current_context
+            .as_ref()
+            .context("No active context. Use --context <id> or --all.")?
+            .clone()]
+    };
+
+    let mut entries = Vec::new();
+    for cid in &context_ids {
+        entries.extend(db.list_entries(cid)?);
+    }
+
+    if entries.is_empty() {
+        println!("No entries to retag.");
+        return Ok(());
+    }
+
+    let app_config = load_config().unwrap_or_default();
+    let tagger = Tagger::new(app_config.llm);
+
+    let total = entries.len();
+    let mut tagged = 0usize;
+    for (i, entry) in entries.iter().enumerate() {
+        let existing = db.list_vocab_tags().unwrap_or_default();
+        let tags = tagger.tag(&entry.content, &existing).unwrap_or_default();
+        if !tags.is_empty() {
+            db.update_entry_tags(&entry.id, &tags)?;
+            let _ = db.bump_tags(&tags);
+            tagged += 1;
+        }
+        println!("[{}/{}] {} → {}", i + 1, total, entry.id, tags.join(", "));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    println!("\n✓ Retagged {}/{} entries", tagged, total);
     Ok(())
 }
 
@@ -1172,7 +1259,13 @@ fn load_config() -> Result<AppConfig> {
     let path = Vault::default_root().join("appconfig.json");
     if path.exists() {
         let json = std::fs::read_to_string(&path)?;
-        Ok(serde_json::from_str(&json).unwrap_or_default())
+        match serde_json::from_str::<AppConfig>(&json) {
+            Ok(c) => Ok(c),
+            Err(e) => {
+                eprintln!("⚠️  appconfig.json parse error ({}), using defaults", e);
+                Ok(AppConfig::default())
+            }
+        }
     } else {
         Ok(AppConfig::default())
     }

@@ -64,6 +64,12 @@ impl Database {
                 FOREIGN KEY (context_id) REFERENCES contexts(id)
             );
 
+            CREATE TABLE IF NOT EXISTS tag_vocab (
+                tag        TEXT PRIMARY KEY,
+                count      INTEGER NOT NULL DEFAULT 0,
+                created    TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_entries_context ON entries(context_id);
             CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date);
             CREATE INDEX IF NOT EXISTS idx_contexts_status ON contexts(status);
@@ -418,6 +424,55 @@ impl Database {
             params![resolved, id],
         )?;
         Ok(())
+    }
+
+    /// Update an entry's tags
+    pub fn update_entry_tags(&self, id: &str, tags: &[String]) -> Result<()> {
+        let tags_json = serde_json::to_string(tags)?;
+        self.conn.execute(
+            "UPDATE entries SET tags = ?1 WHERE id = ?2",
+            params![tags_json, id],
+        )?;
+        Ok(())
+    }
+
+    /// List all vocabulary tags (ordered by usage count DESC)
+    pub fn list_vocab_tags(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT tag FROM tag_vocab ORDER BY count DESC, tag ASC",
+        )?;
+        let tags = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(tags)
+    }
+
+    /// Bump usage count for each tag (UPSERT: insert count=1 or count+1)
+    pub fn bump_tags(&self, tags: &[String]) -> Result<()> {
+        let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        for tag in tags {
+            self.conn.execute(
+                r#"INSERT INTO tag_vocab (tag, count, created) VALUES (?1, 1, ?2)
+                   ON CONFLICT(tag) DO UPDATE SET count = count + 1"#,
+                params![tag, now],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Vocabulary stats: (tag, count) list ordered by count DESC
+    pub fn get_vocab_stats(&self) -> Result<Vec<(String, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT tag, count FROM tag_vocab ORDER BY count DESC, tag ASC",
+        )?;
+        let stats = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(stats)
     }
 
     /// Unified query over entries with filters
@@ -894,6 +949,39 @@ mod tests {
         assert!(stats.by_status.iter().any(|(s, c)| s == "active" && *c == 3));
         assert_eq!(stats.recent_activity.len(), 1);
         assert_eq!(stats.recent_activity[0].1, 3);
+    }
+
+    #[test]
+    fn test_tag_vocab() {
+        let db = Database::open_memory().unwrap();
+
+        assert!(db.list_vocab_tags().unwrap().is_empty());
+
+        db.bump_tags(&["后端开发".to_string(), "部署".to_string()]).unwrap();
+        db.bump_tags(&["后端开发".to_string()]).unwrap();
+
+        let stats = db.get_vocab_stats().unwrap();
+        assert_eq!(stats.len(), 2);
+        assert_eq!(stats[0], ("后端开发".to_string(), 2));
+        assert_eq!(stats[1], ("部署".to_string(), 1));
+
+        let tags = db.list_vocab_tags().unwrap();
+        assert_eq!(tags, vec!["后端开发".to_string(), "部署".to_string()]);
+    }
+
+    #[test]
+    fn test_update_entry_tags() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Tag Test");
+        db.upsert_context(&ctx).unwrap();
+
+        let entry = Entry::new(&ctx.id, "content", "progress");
+        db.add_entry(&entry).unwrap();
+        assert!(db.get_entry(&entry.id).unwrap().unwrap().tags.is_empty());
+
+        db.update_entry_tags(&entry.id, &["投资".to_string()]).unwrap();
+        let fetched = db.get_entry(&entry.id).unwrap().unwrap();
+        assert_eq!(fetched.tags, vec!["投资".to_string()]);
     }
 
     #[test]

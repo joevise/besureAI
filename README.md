@@ -216,6 +216,11 @@ besure share <entry_id>           Share entry to shared vault
 besure share-context <ctx_id>     Share entire context
 besure shared [--keyword <kw>]    View shared vault contents
 
+# === Auto-Tagging (V0.58) ===
+besure add <content>              Auto-tags entry with 1-3 broad tags (sync, LLM)
+besure tags                       Show tag vocabulary (tag + usage count)
+besure retag [--all] [--context <id>]  Re-tag existing entries
+
 # === Closure (V3) ===
 besure link <id> --to <id>        Link entries (caused_by/supersedes/related_to)
 besure expire <id>                Mark entry as expired
@@ -225,7 +230,7 @@ besure config set/get/list        Project-level config
 
 # === Server ===
 besure serve [--port 7788]        Start web dashboard + REST API
-besure mcp                        Start MCP server (stdio, 23 tools)
+besure mcp                        Start MCP server (stdio, 24 tools)
 besure export <context>           Export to Markdown
 ```
 
@@ -287,6 +292,7 @@ Single binary. Zero external dependencies. Pure Rust.
 | **V0.5** | ✅ Done | Multi-vault architecture: physical isolation per agent, global view, shared vault (23 MCP tools) |
 | **V0.5.5** | ✅ Done | Dashboard multi-Agent view: sidebar Agent list, data source switching |
 | **V0.56** | ✅ Done | `besure setup` + mandatory recording rules: multi-platform detection, idempotent injection |
+| **V0.58** | ✅ Done | Emergent auto-tagging: LLM tags every entry on add (1-3 flat broad tags), `tag_vocab` table with synonym reuse, `besure tags` / `besure retag`, MCP `besure_list_tags`, REST `/api/tags`, Dashboard tag filter (24 MCP tools) |
 | **Next** | 📋 Planned | Tauri desktop app, crates.io publish, GitHub Actions CI, Product Hunt launch |
 | **Future** | 📋 Planned | VS Code extension, browser extension, team collaboration |
 

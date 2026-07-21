@@ -191,6 +191,31 @@ besure shared
 besure shared --keyword "BTC"
 ```
 
+### V0.58 自动标签（Emergent Tagging）
+
+`besure add` 时自动调用 LLM 给 entry 打 1-3 个扁平大类中文标签（如 `后端开发`、`部署`、`家庭`、`投资`），同步写入 `entry.tags`：
+
+```bash
+# add 时自动打标（输出带 🏷 标签）
+besure add "完成了后端 API 部署" --context ctx_xxx
+# → ✓ Added progress entry to ctx_xxx  🏷 后端开发, 部署
+
+# 查看标签库（tag + 使用次数，降序）
+besure tags
+
+# 给存量 entry 补标签
+besure retag                    # 当前 context
+besure retag --context ctx_xxx  # 指定 context
+besure retag --all              # 全库
+```
+
+要点：
+- 标签库存 `tag_vocab` 表：新标签先匹配已有库，语义相同复用（避免"前端"/"frontend"同义词爆炸），没有才新建
+- LLM 不可用（provider=dummy / 无 api_url / 请求失败）时**降级跳过**，绝不阻塞 add
+- 打标复用 `~/.besure/appconfig.json` 的 `llm` 配置（同 absorb）
+- Dashboard 每条 entry 显示标签，可按标签筛选（前端过滤）
+- MCP tool `besure_list_tags` 返回标签库；REST `GET /api/tags`
+
 ### 项目配置管理
 
 ```bash
@@ -259,5 +284,6 @@ echo "对话内容..." | besure absorb --auto
 - V0.4 query 默认返回 20 条，紧凑格式（对 Agent 友好）
 - V0.4 resolve 标记完成，append 追加内容（加分隔线+时间戳）
 - DB migration 幂等，多次运行安全
-- MCP Server 20 个 tools（含 query/resolve/append/stats）
-- Dashboard 支持 filter bar、resolved 徽章、append 输入框、Stats Tab
+- MCP Server 24 个 tools（含 query/resolve/append/stats/list_tags）
+- Dashboard 支持 filter bar、resolved 徽章、append 输入框、Stats Tab、Tags Tab、标签筛选
+- V0.58 自动标签：add 时 LLM 同步打标（1-3 个大类），tag_vocab 复用防同义词；LLM 不可用自动降级

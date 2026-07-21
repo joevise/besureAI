@@ -62,7 +62,7 @@ impl McpServer {
                     },
                     "serverInfo": {
                         "name": "besure",
-                        "version": "0.57.1"
+                        "version": "0.58.0"
                     }
                 }
             }),
@@ -313,6 +313,11 @@ impl McpServer {
                 }
             }),
             json!({
+                "name": "besure_list_tags",
+                "description": "列出自动标签库（tag + 使用次数，按使用频率降序）",
+                "inputSchema": {"type": "object", "properties": {}}
+            }),
+            json!({
                 "name": "besure_shared",
                 "description": "查看共享 vault 内容",
                 "inputSchema": {
@@ -356,6 +361,7 @@ impl McpServer {
             "besure_vaults" => Self::tool_vaults(&args),
             "besure_share" => Self::tool_share(&args),
             "besure_shared" => Self::tool_shared(&args),
+            "besure_list_tags" => Self::tool_list_tags(&args),
             _ => Err(format!("unknown tool: {}", tool_name)),
         };
 
@@ -459,10 +465,40 @@ impl McpServer {
 
         let entry = Entry::new(id, content, entry_type);
         let db = vault.database().map_err(|e| e.to_string())?;
+
+        // 自动打标（同步，LLM 不可用时降级为空标签）
+        let tagger = crate::ai::Tagger::from_app_config();
+        let existing = db.list_vocab_tags().unwrap_or_default();
+        let tags = tagger.tag(content, &existing).unwrap_or_default();
+
+        let mut entry = entry;
+        entry.tags = tags.clone();
         db.add_entry(&entry).map_err(|e| e.to_string())?;
+        if !tags.is_empty() {
+            let _ = db.bump_tags(&tags);
+        }
         vault.write_entry_md(&entry).map_err(|e| e.to_string())?;
 
-        Ok(format!("✓ Added {} entry to {}", entry_type, id))
+        if tags.is_empty() {
+            Ok(format!("✓ Added {} entry to {}", entry_type, id))
+        } else {
+            Ok(format!("✓ Added {} entry to {}  🏷 {}", entry_type, id, tags.join(", ")))
+        }
+    }
+
+    fn tool_list_tags(_args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let stats = db.get_vocab_stats().map_err(|e| e.to_string())?;
+
+        if stats.is_empty() {
+            return Ok("No tags yet.".to_string());
+        }
+
+        let lines: Vec<String> = stats.iter()
+            .map(|(tag, count)| format!("  {} ({})", tag, count))
+            .collect();
+        Ok(format!("Tags ({}):\n{}", stats.len(), lines.join("\n")))
     }
 
     fn tool_search(args: &Value) -> Result<String, String> {

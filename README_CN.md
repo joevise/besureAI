@@ -220,6 +220,11 @@ besure share <entry_id>           推送到共享 vault
 besure share-context <ctx_id>     推送整个上下文
 besure shared [--keyword <kw>]    查看共享内容
 
+# === 自动标签（V0.58）===
+besure add <content>              添加时自动打 1-3 个大类标签（同步，LLM）
+besure tags                       查看标签库（标签 + 使用次数）
+besure retag [--all] [--context <id>]  给存量 entry 补标签
+
 # === 闭环（V3）===
 besure link <id> --to <id>        关联记录（caused_by/supersedes/related_to）
 besure expire <id>                标记过期
@@ -230,7 +235,7 @@ besure config set/get/list        项目配置
 # === 服务 ===
 besure setup [--agent-name <n>]      一键配置：初始化 + Agent 铁律注入
 besure serve [--port 7788]        启动 Web Dashboard + REST API
-besure mcp                        启动 MCP Server（stdio，23 个 tools）
+besure mcp                        启动 MCP Server（stdio，24 个 tools）
 besure export <context>           导出为 Markdown
 ```
 
@@ -278,6 +283,7 @@ Step 3: Inject mandatory recording rules
 | **V0.5** | ✅ 完成 | 多 Vault 架构：物理隔离、全局视角、共享 vault（23 MCP tools） |
 | **V0.5.5** | ✅ 完成 | Dashboard 多 Agent 视角：侧边栏 Agent 列表、切换数据源 |
 | **V0.56** | ✅ 完成 | `besure setup` + 强制记忆铁律：多平台检测、幂等注入 AGENTS.md |
+| **V0.58** | ✅ 完成 | 涌现式自动标签：add 时 LLM 同步打 1-3 个扁平大类标签，tag_vocab 标签库复用防同义词爆炸，`besure tags` / `besure retag`，MCP `besure_list_tags`，REST `/api/tags`，Dashboard 标签筛选（24 个 MCP tools） |
 | **下一步** | 📋 计划中 | Tauri 桌面 APP、crates.io 发布、GitHub Actions CI、Product Hunt 上线 |
 | **未来** | 📋 计划中 | VS Code 插件、浏览器插件、团队协作 |
 

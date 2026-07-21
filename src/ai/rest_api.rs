@@ -113,6 +113,7 @@ impl ApiServer {
             .route("/api/entries/:id/resolve", post(resolve_entry))
             .route("/api/entries/:id/append", post(append_entry))
             .route("/api/stats", get(get_stats_handler))
+            .route("/api/tags", get(list_tags))
             // V0.5.5: multi-vault routes
             .route("/api/vaults", get(list_all_vaults))
             .route("/api/vaults/:id/contexts", get(get_vault_contexts))
@@ -331,7 +332,18 @@ async fn add_entry(
     let entry_type = if body.entry_type.is_empty() { "progress".to_string() } else { body.entry_type };
     let entry = Entry::new(&id, &body.content, &entry_type);
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 自动打标（同步，LLM 不可用时降级为空标签）
+    let tagger = crate::ai::Tagger::from_app_config();
+    let existing = db.list_vocab_tags().unwrap_or_default();
+    let tags = tagger.tag(&body.content, &existing).unwrap_or_default();
+
+    let mut entry = entry;
+    entry.tags = tags.clone();
     db.add_entry(&entry).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if !tags.is_empty() {
+        let _ = db.bump_tags(&tags);
+    }
     vault.write_entry_md(&entry).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
 }
@@ -487,6 +499,20 @@ async fn get_stats_handler(
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let stats = db.get_stats().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(stats), error: None }))
+}
+
+async fn list_tags(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, (StatusCode, String)> {
+    require_auth(&headers, &state).map_err(|(code, _)| (code, "unauthorized".to_string()))?;
+    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let stats = db.get_vocab_stats().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let data: Vec<serde_json::Value> = stats.iter()
+        .map(|(tag, count)| serde_json::json!({"tag": tag, "count": count}))
+        .collect();
+    Ok(Json(ApiResponse { ok: true, data: Some(data), error: None }))
 }
 
 // === V0.5.5: Multi-vault handlers ===
