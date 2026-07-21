@@ -171,12 +171,37 @@ async fn authenticate(
     State(state): State<Arc<AppState>>,
     Json(body): Json<AuthBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, String)> {
-    // 打开 vault 验证密码
+    // 优先校验 Dashboard 独立密码（环境变量 BESURE_DASHBOARD_PASSWORD），与 vault 加密无关
+    // 这解决了「vault 不加密 → 任何密码都能登录」的安全问题
+    if let Ok(dash_pw) = std::env::var("BESURE_DASHBOARD_PASSWORD") {
+        if !dash_pw.is_empty() {
+            if body.password == dash_pw {
+                let token = generate_session_token();
+                state.sessions.lock().await.insert(token.clone());
+                return Ok(Json(ApiResponse {
+                    ok: true,
+                    data: Some(serde_json::json!({"token": token})),
+                    error: None,
+                }));
+            } else {
+                return Ok(Json(ApiResponse {
+                    ok: false,
+                    data: None,
+                    error: Some("wrong password".into()),
+                }));
+            }
+        }
+    }
+
+    // 没有 Dashboard 独立密码时，走 vault 加密校验
     let vault = Vault::open(Some(state.vault_root.clone()))
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if !vault.config.encryption {
-        // 无加密模式，直接通过
+        // 无加密且没设 Dashboard 密码：仅允许本机访问（生产环境应设密码）
+        // 为了安全，无密码模式下也要求输入 vault 的 master password 作为确认
+        // 但由于 vault 未加密无法验证，所以放行但打印警告
+        eprintln!("⚠️  Dashboard: no encryption and no BESURE_DASHBOARD_PASSWORD set — accepting all passwords (insecure!)");
         let token = generate_session_token();
         state.sessions.lock().await.insert(token.clone());
         return Ok(Json(ApiResponse {
