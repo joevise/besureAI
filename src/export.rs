@@ -109,7 +109,9 @@ pub fn export_encrypted(
 
 /// Decrypt .besure bytes and import into the database.
 /// Entries whose id already exists are skipped.
-pub fn import_bytes(db: &Database, data: &[u8], password: &str) -> Result<ImportResult> {
+/// If `target_context_id` is Some, all entries are imported into that existing
+/// context instead of restoring the original context from the payload.
+pub fn import_bytes(db: &Database, data: &[u8], password: &str, target_context_id: Option<&str>) -> Result<ImportResult> {
     let header_len = MAGIC.len() + 1 + SALT_LEN + NONCE_LEN;
     if data.len() < header_len + 16 {
         bail!("file too short to be a .besure export");
@@ -134,10 +136,21 @@ pub fn import_bytes(db: &Database, data: &[u8], password: &str) -> Result<Import
     let payload: ExportPayload = serde_json::from_slice(&plaintext)
         .context("decrypted payload is not valid .besure JSON")?;
 
-    // Insert context only if it doesn't already exist
-    if db.get_context(&payload.context.id)?.is_none() {
-        db.upsert_context(&payload.context)?;
-    }
+    let context = match target_context_id {
+        Some(target_id) => {
+            let ctx = db
+                .get_context(target_id)?
+                .with_context(|| format!("target context '{}' not found", target_id))?;
+            ctx
+        }
+        None => {
+            // Insert context only if it doesn't already exist
+            if db.get_context(&payload.context.id)?.is_none() {
+                db.upsert_context(&payload.context)?;
+            }
+            payload.context
+        }
+    };
 
     let mut imported = 0usize;
     let mut skipped = 0usize;
@@ -145,23 +158,25 @@ pub fn import_bytes(db: &Database, data: &[u8], password: &str) -> Result<Import
         if db.get_entry(&entry.id)?.is_some() {
             skipped += 1;
         } else {
-            db.add_entry(entry)?;
+            let mut entry = entry.clone();
+            entry.context_id = context.id.clone();
+            db.add_entry(&entry)?;
             imported += 1;
         }
     }
 
     Ok(ImportResult {
-        context: payload.context,
+        context,
         entries_imported: imported,
         entries_skipped: skipped,
     })
 }
 
 /// Import a .besure file into the current vault.
-pub fn import_encrypted(db: &Database, file_path: &Path, password: &str) -> Result<ImportResult> {
+pub fn import_encrypted(db: &Database, file_path: &Path, password: &str, target_context_id: Option<&str>) -> Result<ImportResult> {
     let data = std::fs::read(file_path)
         .with_context(|| format!("failed to read {}", file_path.display()))?;
-    import_bytes(db, &data, password)
+    import_bytes(db, &data, password, target_context_id)
 }
 
 // === Minimal base64 (no new dependencies) ===
@@ -259,7 +274,7 @@ mod tests {
 
         // Import into a fresh DB
         let db2 = Database::open_memory().unwrap();
-        let result = import_encrypted(&db2, &tmp, "test123").unwrap();
+        let result = import_encrypted(&db2, &tmp, "test123", None).unwrap();
         assert_eq!(result.context.id, ctx.id);
         assert_eq!(result.entries_imported, 2);
         assert_eq!(result.entries_skipped, 0);
@@ -276,11 +291,41 @@ mod tests {
         assert_eq!(restored2.valid_until.as_deref(), Some("2026-12-31"));
 
         // Re-import: all entries skipped
-        let result2 = import_encrypted(&db2, &tmp, "test123").unwrap();
+        let result2 = import_encrypted(&db2, &tmp, "test123", None).unwrap();
         assert_eq!(result2.entries_imported, 0);
         assert_eq!(result2.entries_skipped, 2);
 
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn test_import_into_target_context() {
+        let (db, ctx) = setup_db();
+        let mut e1 = Entry::new(&ctx.id, "entry one", "progress");
+        e1.id = format!("{}_t1", ctx.id);
+        let mut e2 = Entry::new(&ctx.id, "entry two", "note");
+        e2.id = format!("{}_t2", ctx.id);
+        db.add_entry(&e1).unwrap();
+        db.add_entry(&e2).unwrap();
+        let (bytes, _) = export_bytes(&db, &ctx.id, "pw123").unwrap();
+
+        let db2 = Database::open_memory().unwrap();
+        let target = Context::from_title("Target Context");
+        db2.upsert_context(&target).unwrap();
+
+        let result = import_bytes(&db2, &bytes, "pw123", Some(&target.id)).unwrap();
+        assert_eq!(result.context.id, target.id);
+        assert_eq!(result.entries_imported, 2);
+
+        let entries = db2.list_entries(&target.id).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|e| e.context_id == target.id));
+        // Original context must NOT be created
+        assert!(db2.get_context(&ctx.id).unwrap().is_none());
+
+        // Unknown target context errors
+        let err = import_bytes(&db2, &bytes, "pw123", Some("ctx_nonexistent")).unwrap_err();
+        assert!(err.to_string().contains("not found"));
     }
 
     #[test]
@@ -290,7 +335,7 @@ mod tests {
 
         let (bytes, _) = export_bytes(&db, &ctx.id, "correct").unwrap();
         let db2 = Database::open_memory().unwrap();
-        let err = import_bytes(&db2, &bytes, "wrong").unwrap_err();
+        let err = import_bytes(&db2, &bytes, "wrong", None).unwrap_err();
         assert!(err.to_string().contains("wrong password"));
     }
 
@@ -298,7 +343,7 @@ mod tests {
     fn test_bad_magic() {
         let db = Database::open_memory().unwrap();
         let fake = vec![b'X'; 64];
-        let err = import_bytes(&db, &fake, "pw").unwrap_err();
+        let err = import_bytes(&db, &fake, "pw", None).unwrap_err();
         assert!(err.to_string().contains("bad magic"));
     }
 

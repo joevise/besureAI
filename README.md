@@ -8,7 +8,7 @@
 
 **Rust-powered · Local-first · End-to-end encrypted · MCP-native · Single binary**
 
-**Current version: 0.58.0** — Emergent auto-tagging; Config concept removed (everything is an entry + auto tags).
+**Current version: 0.59.0** — Emergent auto-tagging; Config concept removed (everything is an entry + auto tags).
 
 ---
 
@@ -21,7 +21,7 @@ You work on multiple projects. You switch between tasks. Every time you switch, 
 | Problem | Solution |
 |---------|----------|
 | 🔀 **Context loss** when switching projects | Git-branch-like context isolation — work on one, switch instantly |
-| 🤖 **AI agents can't remember** across sessions | Native MCP Server (20 tools) — Claude, Cursor, OpenClaw can store & retrieve context |
+| 🤖 **AI agents can't remember** across sessions | Native MCP Server (22 tools) — Claude, Cursor, OpenClaw can store & retrieve context |
 | 🔐 **Multiple agents, no isolation** | Multi-vault architecture — each agent gets its own physically isolated vault |
 | ☁️ **Cloud dependency & privacy concerns** | 100% local — SQLite + Markdown, zero cloud required |
 | 🔓 **Data security** | AES-256-GCM + Argon2id encryption — keys never touch disk |
@@ -174,7 +174,7 @@ Now your AI agent can:
 - **Create contexts** → start new project memory
 - **Export & share** → hand off context to teammates
 
-### MCP Tools (20)
+### MCP Tools (22)
 
 | Tool | Purpose |
 |------|---------|
@@ -289,7 +289,7 @@ besure recall                     Recall entries needing attention
 
 # === Server ===
 besure serve [--port 7788]        Start web dashboard + REST API
-besure mcp                        Start MCP server (stdio, 20 tools)
+besure mcp                        Start MCP server (stdio, 22 tools)
 besure export <context>           Export to encrypted .besure (default)
 besure export <context> --format md   Export to Markdown (legacy)
 besure import <file.besure>       Import encrypted .besure (dedupes by id)

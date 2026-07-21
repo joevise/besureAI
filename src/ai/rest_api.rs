@@ -170,6 +170,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 
 async fn authenticate(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(body): Json<AuthBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, String)> {
     // 优先校验 Dashboard 独立密码（环境变量 BESURE_DASHBOARD_PASSWORD），与 vault 加密无关
@@ -195,8 +196,7 @@ async fn authenticate(
     }
 
     // 没有 Dashboard 独立密码时，走 vault 加密校验
-    let vault = Vault::open(Some(state.vault_root.clone()))
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
 
     if !vault.config.encryption {
         // 无加密且没设 Dashboard 密码：仅允许本机访问（生产环境应设密码）
@@ -288,6 +288,26 @@ fn require_auth(
     }
 }
 
+/// Open the correct vault based on X-Vault-Id header (multi-vault mode) or fallback to state.vault_root
+fn open_vault_from_headers(
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<Vault, (StatusCode, String)> {
+    // Check for X-Vault-Id header (set by Dashboard frontend)
+    if let Some(vault_id) = headers.get("x-vault-id").and_then(|v| v.to_str().ok()) {
+        if !vault_id.is_empty() && vault_id != "default" {
+            let parent = crate::storage::Vault::vault_parent();
+            let vault_path = parent.join(vault_id);
+            if !vault_path.exists() {
+                return Err((StatusCode::NOT_FOUND, format!("vault '{}' not found", vault_id)));
+            }
+            return Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+        }
+    }
+    // Fallback: default vault root (backward compat for CLI/single-vault mode)
+    Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
 // === Handlers ===
 
 async fn dashboard() -> axum::response::Response<String> {
@@ -309,7 +329,7 @@ async fn list_contexts(
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Vec<Context>>>, (StatusCode, Json<ApiResponse<()>>)> {
     require_auth(&headers, &state)?;
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse { ok: false, data: None, error: Some("vault error".into()) })))?;
+    let vault = open_vault_from_headers(&headers, &state).map_err(|(c, m)| (c, Json(ApiResponse { ok: false, data: None, error: Some(m) })))?;
     let db = vault.database().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse { ok: false, data: None, error: Some("db error".into()) })))?;
     let contexts = db.list_contexts().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse { ok: false, data: None, error: Some("query error".into()) })))?;
     Ok(Json(ApiResponse { ok: true, data: Some(contexts), error: None }))
@@ -320,7 +340,7 @@ async fn get_context(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Context>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let ctx = db.get_context(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     match ctx {
@@ -334,7 +354,7 @@ async fn create_context(
     headers: HeaderMap,
     Json(body): Json<CreateBody>,
 ) -> Result<Json<ApiResponse<Context>>, (StatusCode, String)> {
-    let mut vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let mut vault = open_vault_from_headers(&headers, &state)?;
     let mut ctx = Context::from_title(&body.title);
     ctx.tags = body.tags;
     ctx.summary = body.summary;
@@ -354,7 +374,7 @@ async fn add_entry(
     Path(id): Path<String>,
     Json(body): Json<AddEntryBody>,
 ) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let entry_type = if body.entry_type.is_empty() { "progress".to_string() } else { body.entry_type };
     let entry = Entry::new(&id, &body.content, &entry_type);
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -379,7 +399,7 @@ async fn get_log(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<Entry>>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let entries = db.list_entries(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(entries), error: None }))
@@ -390,7 +410,7 @@ async fn search(
     headers: HeaderMap,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let results = db.search(&query.q).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let data: Vec<serde_json::Value> = results.iter().map(|(ctx, entry)| {
@@ -406,7 +426,7 @@ async fn status(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let ctx_count = db.count_contexts().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let entry_count = db.count_entries().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -459,9 +479,11 @@ async fn export_context_encrypted(
 struct ImportBody {
     password: String,
     file_base64: String,
+    /// Optional: import all entries into this existing context instead of restoring the original
+    target_context_id: Option<String>,
 }
 
-/// Vault-scoped import: POST /api/vaults/:id/import  body: {password, file_base64}
+/// Vault-scoped import: POST /api/vaults/:id/import  body: {password, file_base64, target_context_id?}
 async fn import_vault(
     State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -476,7 +498,7 @@ async fn import_vault(
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid base64: {}", e)))?;
     let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let result = crate::export::import_bytes(&db, &data, &body.password)
+    let result = crate::export::import_bytes(&db, &data, &body.password, body.target_context_id.as_deref())
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(ApiResponse {
         ok: true,
@@ -497,7 +519,7 @@ async fn query_entries(
     headers: HeaderMap,
     Query(params): Query<QueryParams>,
 ) -> Result<Json<ApiResponse<Vec<Entry>>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let all = params.all.unwrap_or(false);
@@ -544,7 +566,7 @@ async fn resolve_entry(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     db.update_entry_resolved(&id, true).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
@@ -556,7 +578,7 @@ async fn append_entry(
     Path(id): Path<String>,
     Json(body): Json<AppendBody>,
 ) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     db.append_entry_content(&id, &body.content).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
@@ -566,7 +588,7 @@ async fn get_stats_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Stats>>, (StatusCode, String)> {
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let stats = db.get_stats().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(stats), error: None }))
@@ -590,7 +612,7 @@ async fn list_tags(
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, (StatusCode, String)> {
     require_auth(&headers, &state).map_err(|(code, _)| (code, "unauthorized".to_string()))?;
-    let vault = Vault::open(Some(state.vault_root.clone())).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let stats = db.get_vocab_stats().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let data: Vec<serde_json::Value> = stats.iter()

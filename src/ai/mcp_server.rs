@@ -592,7 +592,7 @@ impl McpServer {
 
         let data = crate::export::b64_decode(file_base64).map_err(|e| e.to_string())?;
         let db = vault.database().map_err(|e| e.to_string())?;
-        let result = crate::export::import_bytes(&db, &data, password).map_err(|e| e.to_string())?;
+        let result = crate::export::import_bytes(&db, &data, password, None).map_err(|e| e.to_string())?;
 
         Ok(format!(
             "✓ Imported context '{}' ({}) — {} entries imported, {} skipped (already exist)",

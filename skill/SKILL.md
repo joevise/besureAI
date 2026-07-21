@@ -110,8 +110,15 @@ besure search "关键词"
 # 语义搜索（需配置 embedding API）
 besure search "意思相近的描述" --semantic
 
-# 导出上下文
-besure export "项目名" -o output.md
+# 导出上下文（默认加密 .besure，AES-256-GCM，只有 besure import + 密码能还原）
+besure export "项目名" --password *** -o backup.besure
+besure export "项目名" -o backup.besure          # 交互式输入密码
+
+# 旧版 Markdown 导出（明文，无 tags/links/status 保证）
+besure export "项目名" --format md -o output.md
+
+# 导入加密 .besure 文件（context 已存在时 entry 按 id 去重，跳过已存在）
+besure import backup.besure --password ***
 ```
 
 ### V3 闭环功能
@@ -217,6 +224,23 @@ besure retag --all              # 全库
 - Dashboard 每条 entry 显示标签，可按标签筛选（前端过滤）
 - MCP tool `besure_list_tags` 返回标签库；REST `GET /api/tags`
 
+### V0.59 加密导出/导入（.besure 格式）
+
+```bash
+# 导出为自有加密格式（不是 zip，任何压缩工具打不开）
+besure export "项目名" -o backup.besure
+# 文件头：BESURE1 + VERSION(0x01) + SALT(16B) + NONCE(12B)，其余为 AES-256-GCM(JSON) 密文
+# entry 全字段导出：tags/links/status/resolved/valid_until/superseded_by
+
+# 导入（密码错误会明确报错；已存在的 entry id 自动跳过）
+besure import backup.besure
+```
+
+要点：
+- 每次导出随机生成 salt + nonce，同内容两次导出文件不同
+- MCP：`besure_export` 带 `password` 参数返回 base64 加密内容；`besure_import` 接受 `file_base64` + `password`
+- Dashboard：Export 按钮弹密码框下载 .besure；侧栏 ⇪ 按钮上传导入
+
 ### 生产级记录格式（推荐）
 
 对重要决策和里程碑，使用 `--from-file` 写多段落 Markdown：
@@ -269,6 +293,6 @@ echo "对话内容..." | besure absorb --auto
 - V0.4 query 默认返回 20 条，紧凑格式（对 Agent 友好）
 - V0.4 resolve 标记完成，append 追加内容（加分隔线+时间戳）
 - DB migration 幂等，多次运行安全
-- MCP Server 20 个 tools（含 query/resolve/append/stats/list_tags）
+- MCP Server 22 个 tools（含 query/resolve/append/stats/list_tags）
 - Dashboard 支持 filter bar、resolved 徽章、append 输入框、Stats Tab、Tags Tab、标签筛选
 - V0.58 自动标签：add 时 LLM 同步打标（1-3 个大类），tag_vocab 复用防同义词；LLM 不可用自动降级

@@ -8,7 +8,7 @@
 
 **Rust 引擎 · 本地部署 · 端到端加密 · MCP 原生 · 单二进制**
 
-**当前版本：0.58.0** — 涌现式自动标签；砍掉 Config 概念（一切归于 entry + 自动标签）。
+**当前版本：0.59.0** — 涌现式自动标签；砍掉 Config 概念（一切归于 entry + 自动标签）。
 
 [English](README.md) | 中文
 
@@ -23,7 +23,7 @@
 | 痛点 | 方案 |
 |------|------|
 | 🔀 切换项目时**上下文丢失** | 类似 git branch 的上下文隔离——专注一个，秒级切换 |
-| 🤖 **AI Agent 无法跨会话记忆** | 原生 MCP Server（20 个 tools）——Claude/Cursor/OpenClaw 可直接存取上下文 |
+| 🤖 **AI Agent 无法跨会话记忆** | 原生 MCP Server（22 个 tools）——Claude/Cursor/OpenClaw 可直接存取上下文 |
 | 🔐 **多个 Agent 之间无隔离** | 多 Vault 架构——每个 Agent 拥有物理隔离的独立记忆空间 |
 | ☁️ **云依赖和隐私担忧** | 100% 本地——SQLite + Markdown，零云服务 |
 | 🔓 **数据安全** | AES-256-GCM + Argon2id 加密——密钥永不落盘 |
@@ -110,8 +110,15 @@ besure query --all --keyword "认证"       # 全上下文 + 关键词
 # 标记完成
 besure resolve <entry_id>
 
-# 导出分享
-besure export "我的项目" -o project.md
+# 导出上下文（默认加密 .besure）
+besure export "我的项目" --password *** -o backup.besure
+besure export "我的项目" -o backup.besure        # 交互式输入密码
+
+# 旧版 Markdown 导出
+besure export "我的项目" --format md -o project.md
+
+# 导入加密 .besure 文件（entry 按 id 去重）
+besure import backup.besure --password ***
 ```
 
 ### 多 Vault：每个 Agent 一个独立记忆空间（V0.5）
@@ -171,7 +178,7 @@ AI Agent 可以：
 - **创建上下文** → 开始新项目记忆
 - **导出分享** → 交接给同事
 
-### MCP Tools（20 个）
+### MCP Tools（22 个）
 
 | Tool | 用途 |
 |------|------|
@@ -182,7 +189,8 @@ AI Agent 可以：
 | `besure_search` | 全文搜索 |
 | `besure_create` | 创建新上下文 |
 | `besure_switch` | 切换上下文（模糊匹配） |
-| `besure_export` | 导出上下文为 Markdown |
+| `besure_export` | 导出上下文（带 password 导出加密 .besure base64，否则 Markdown） |
+| `besure_import` | 导入加密 .besure（base64 + 密码，entry 按 id 去重） |
 | `besure_link` | 建立 entry 关联（caused_by/supersedes/related_to/...） |
 | `besure_expire` | 标记 entry 过期 |
 | `besure_supersede` | 标记旧 entry 被新 entry 替代 |
@@ -286,8 +294,10 @@ besure recall                     召回需要注意的记忆
 # === 服务 ===
 besure setup [--agent-name <n>]      一键配置：初始化 + Agent 铁律注入
 besure serve [--port 7788]        启动 Web Dashboard + REST API
-besure mcp                        启动 MCP Server（stdio，20 个 tools）
-besure export <context>           导出为 Markdown
+besure mcp                        启动 MCP Server（stdio，22 个 tools）
+besure export <context>           导出为加密 .besure（默认）
+besure export <context> --format md   导出为 Markdown（旧版）
+besure import <file.besure>       导入加密 .besure（按 id 去重）
 ```
 
 ## `besure setup` — 开箱即用

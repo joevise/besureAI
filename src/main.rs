@@ -114,6 +114,9 @@ enum Commands {
         /// Password (will prompt if not provided)
         #[arg(long)]
         password: Option<String>,
+        /// Import entries into this existing context instead of restoring the original
+        #[arg(long)]
+        context: Option<String>,
     },
 
     /// Unlock vault
@@ -330,8 +333,8 @@ fn main() -> anyhow::Result<()> {
         Commands::Export { context, output, password, format } => {
             cli::commands::cmd_export_from_args(&context, output.as_deref(), password.as_deref(), &format)
         }
-        Commands::Import { file, password } => {
-            cli::commands::cmd_import_from_args(&file, password.as_deref())
+        Commands::Import { file, password, context } => {
+            cli::commands::cmd_import_from_args(&file, password.as_deref(), context.as_deref())
         }
         Commands::Unlock => cli::commands::cmd_unlock(),
         Commands::Lock => cli::commands::cmd_lock(),

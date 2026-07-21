@@ -463,7 +463,7 @@ pub fn cmd_export_from_args(context: &str, output: Option<&str>, password: Optio
 }
 
 // === import ===
-pub fn cmd_import_from_args(file: &str, password: Option<&str>) -> Result<()> {
+pub fn cmd_import_from_args(file: &str, password: Option<&str>, target_context: Option<&str>) -> Result<()> {
     let vault = get_unlocked_vault()?;
     let db = vault.database()?;
 
@@ -473,7 +473,7 @@ pub fn cmd_import_from_args(file: &str, password: Option<&str>) -> Result<()> {
     };
 
     let file_path = PathBuf::from(file);
-    let result = besure_lib::export::import_encrypted(&db, &file_path, &password)?;
+    let result = besure_lib::export::import_encrypted(&db, &file_path, &password, target_context)?;
 
     println!(
         "✓ Imported context '{}' ({}) — {} entries imported, {} skipped (already exist)",

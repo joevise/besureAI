@@ -416,6 +416,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
     <h3>Import .besure File</h3>
     <div class="modal-field"><label>File *</label><input type="file" id="importFile" accept=".besure"></div>
     <div class="modal-field"><label>Password *</label><input type="password" id="importPassword" placeholder="Export password"></div>
+    <div class="modal-field"><label>Target Context (optional)</label><select id="importTarget"><option value="">Restore original context</option></select></div>
     <div class="modal-actions"><button class="btn" onclick="hideModal('importModal')">Cancel</button><button class="btn btn-primary" onclick="doImport()">Import</button></div>
   </div>
 </div>
@@ -455,6 +456,7 @@ async function api(path,opts={}){
   }
   const headers=opts.headers||{};
   if(SESSION_TOKEN)headers['Authorization']='Bearer '+SESSION_TOKEN;
+  if(currentVault&&currentVault.id)headers['X-Vault-Id']=currentVault.id;
   if(opts.body)headers['Content-Type']='application/json';
   const res=await fetch(path,{...opts,headers});
   if(res.status===401){showLogin();throw new Error('Unauthorized')}
@@ -879,6 +881,9 @@ async function exportCtx(id){
 
 function showImportModal(){
   if(!currentVault){alert('Select a vault first');return}
+  const sel=document.getElementById('importTarget');
+  sel.innerHTML='<option value="">Restore original context</option><option value="__new__">+ New context…</option>';
+  contexts.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.title;sel.appendChild(o)});
   showModal('importModal');
 }
 
@@ -894,7 +899,14 @@ async function doImport(){
     const chunk=0x8000;
     for(let i=0;i<bytes.length;i+=chunk){binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk))}
     const file_base64=btoa(binary);
-    const res=await api(`/api/vaults/${encodeURIComponent(currentVault.id)}/import`,{method:'POST',body:JSON.stringify({password:pw,file_base64})});
+    let target_context_id=document.getElementById('importTarget').value||null;
+    if(target_context_id==='__new__'){
+      const title=prompt('New context title:');
+      if(!title||!title.trim()){return}
+      const createRes=await api('/api/contexts',{method:'POST',body:JSON.stringify({title:title.trim(),tags:[],summary:''})});
+      target_context_id=createRes.data.id;
+    }
+    const res=await api(`/api/vaults/${encodeURIComponent(currentVault.id)}/import`,{method:'POST',body:JSON.stringify({password:pw,file_base64,target_context_id})});
     hideModal('importModal');
     document.getElementById('importFile').value='';document.getElementById('importPassword').value='';
     const d=res.data||{};
