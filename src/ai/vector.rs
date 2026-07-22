@@ -147,6 +147,25 @@ impl VectorStore {
         Ok(())
     }
 
+    /// 检查某 entry 是否已索引
+    pub fn has_entry(&self, entry_id: &str) -> Result<bool> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM embeddings WHERE entry_id = ?1",
+            params![entry_id],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    /// 删除某 entry 的所有 embedding
+    pub fn delete_by_entry(&self, entry_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM embeddings WHERE entry_id = ?1",
+            params![entry_id],
+        )?;
+        Ok(())
+    }
+
     /// 获取总数
     pub fn count(&self) -> Result<i64> {
         let count: i64 = self.conn
@@ -226,6 +245,16 @@ mod tests {
 
         let d = vec![-1.0, 0.0, 0.0];
         assert!((VectorStore::cosine_similarity(&a, &d) - (-1.0)).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_has_entry_and_delete_by_entry() {
+        let store = VectorStore::open_memory().unwrap();
+        assert!(!store.has_entry("entry1").unwrap());
+        store.upsert_embedding("e1", "ctx_a", Some("entry1"), "t", &[1.0]).unwrap();
+        assert!(store.has_entry("entry1").unwrap());
+        store.delete_by_entry("entry1").unwrap();
+        assert!(!store.has_entry("entry1").unwrap());
     }
 
     #[test]

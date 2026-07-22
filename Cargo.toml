@@ -1,6 +1,6 @@
 [package]
 name = "besure"
-version = "0.60.0"
+version = "0.61.0"
 edition = "2021"
 description = "貔貅记忆 Besure AI — Context Switch Memory System. 本地优先多上下文记忆，端到端加密，CLI + MCP + REST API。"
 license = "MIT"
@@ -55,9 +55,13 @@ dirs = "5.0"
 # HTTP 客户端（embedding API / LLM API）
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
+# 本地 embedding（fastembed + bge-small-zh-v1.5，512 维，完全离线）
+fastembed = "4"
+
 # REST API 服务器
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
+
 
 [profile.release]
 opt-level = 3

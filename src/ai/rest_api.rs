@@ -37,6 +37,8 @@ struct ApiResponse<T: Serialize> {
 #[derive(Deserialize)]
 struct SearchQuery {
     q: String,
+    #[serde(default)]
+    semantic: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +115,7 @@ impl ApiServer {
             .route("/api/contexts/:id/entries", post(add_entry))
             .route("/api/contexts/:id/log", get(get_log))
             .route("/api/search", get(search))
+            .route("/api/vaults/:id/search", get(vault_search))
             .route("/api/status", get(status))
             .route("/api/query", get(query_entries))
             .route("/api/entries/:id/resolve", post(resolve_entry))
@@ -482,6 +485,25 @@ async fn add_entry(
         let _ = db.bump_tags(&tags);
     }
     vault.write_entry_md(&entry).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 自动增量索引（失败降级，不阻塞 add）
+    let vault_root = vault.root.clone();
+    let entry_id = entry.id.clone();
+    let entry_ctx = entry.context_id.clone();
+    let entry_content = entry.content.clone();
+    tokio::task::spawn_blocking(move || {
+        let res: anyhow::Result<()> = (|| {
+            let provider = crate::ai::EmbeddingProvider::from_app_config();
+            let vec = provider.embed(&entry_content)?;
+            let store = crate::ai::VectorStore::open(&vault_root.join("vectors.db"))?;
+            store.upsert_embedding(&entry_id, &entry_ctx, Some(&entry_id), &entry_content, &vec)?;
+            Ok(())
+        })();
+        if let Err(e) = res {
+            eprintln!("⚠️  auto-index skipped: {}", e);
+        }
+    });
+
     Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
 }
 
@@ -496,12 +518,70 @@ async fn get_log(
     Ok(Json(ApiResponse { ok: true, data: Some(entries), error: None }))
 }
 
+/// 语义搜索：embed query → vectors.db 余弦相似度 → 关联 entry/context
+fn semantic_search_vault(vault: &Vault, q: &str) -> Result<Vec<serde_json::Value>, (StatusCode, String)> {
+    let vec_db_path = vault.root.join("vectors.db");
+    if !vec_db_path.exists() {
+        return Err((StatusCode::BAD_REQUEST, "No vectors indexed yet. Run 'besure index --all' first.".to_string()));
+    }
+    let provider = crate::ai::EmbeddingProvider::from_app_config();
+    let query_vec = provider.embed(q).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let store = crate::ai::VectorStore::open(&vec_db_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let results = store.search(&query_vec, 10).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let data: Vec<serde_json::Value> = results.iter().map(|r| {
+        let ctx_title = db.get_context(&r.context_id).ok().flatten()
+            .map(|c| c.title).unwrap_or_else(|| r.context_id.clone());
+        let entry_json = r.entry_id.as_deref()
+            .and_then(|eid| db.get_entry(eid).ok().flatten())
+            .map(|e| serde_json::json!({"id": e.id, "date": e.date, "entry_type": e.entry_type, "content": e.content}))
+            .unwrap_or(serde_json::json!({"content": r.chunk_text}));
+        serde_json::json!({
+            "score": r.score,
+            "context": {"id": r.context_id, "title": ctx_title},
+            "entry": entry_json,
+        })
+    }).collect();
+    Ok(data)
+}
+
 async fn search(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, (StatusCode, String)> {
     let vault = open_vault_from_headers(&headers, &state)?;
+    if query.semantic.unwrap_or(false) {
+        let data = semantic_search_vault(&vault, &query.q)?;
+        return Ok(Json(ApiResponse { ok: true, data: Some(data), error: None }));
+    }
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let results = db.search(&query.q).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let data: Vec<serde_json::Value> = results.iter().map(|(ctx, entry)| {
+        serde_json::json!({
+            "context": {"id": ctx.id, "title": ctx.title, "status": ctx.status.to_string()},
+            "entry": {"id": entry.id, "date": entry.date, "entry_type": entry.entry_type, "content": entry.content}
+        })
+    }).collect();
+    Ok(Json(ApiResponse { ok: true, data: Some(data), error: None }))
+}
+
+/// Vault-scoped search: GET /api/vaults/:id/search?q=xxx&semantic=true
+async fn vault_search(
+    State(_state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, (StatusCode, String)> {
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(&id);
+    if !vault_path.exists() {
+        return Err((StatusCode::NOT_FOUND, format!("vault '{}' not found", id)));
+    }
+    let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if query.semantic.unwrap_or(false) {
+        let data = semantic_search_vault(&vault, &query.q)?;
+        return Ok(Json(ApiResponse { ok: true, data: Some(data), error: None }));
+    }
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let results = db.search(&query.q).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let data: Vec<serde_json::Value> = results.iter().map(|(ctx, entry)| {

@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.60.0",
+    version = "0.61.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -90,6 +90,20 @@ enum Commands {
         /// Use semantic search (requires embedding config)
         #[arg(long, action = ArgAction::SetTrue)]
         semantic: bool,
+    },
+
+    /// Build/rebuild the semantic vector index (local fastembed, offline)
+    #[command(name = "index")]
+    Index {
+        /// Index entries across all contexts
+        #[arg(long, action = ArgAction::SetTrue)]
+        all: bool,
+        /// Index a specific context (default: current context)
+        #[arg(long = "context")]
+        context: Option<String>,
+        /// Rebuild vectors even for already-indexed entries
+        #[arg(long, action = ArgAction::SetTrue)]
+        rebuild: bool,
     },
 
     /// Export a context
@@ -353,6 +367,9 @@ fn main() -> anyhow::Result<()> {
         Commands::Log { context } => cli::commands::cmd_log_from_args(context.as_deref()),
         Commands::Search { query, semantic } => {
             cli::commands::cmd_search_from_args(&query, semantic)
+        }
+        Commands::Index { all, context, rebuild } => {
+            cli::commands::cmd_index(all, context.as_deref(), rebuild)
         }
         Commands::Export { context, output, password, format } => {
             cli::commands::cmd_export_from_args(&context, output.as_deref(), password.as_deref(), &format)

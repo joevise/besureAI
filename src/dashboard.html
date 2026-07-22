@@ -353,7 +353,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.60.0</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.61.0</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -361,6 +361,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
     </div>
     <div class="search-box">
       <input type="text" id="searchInput" placeholder="🔍 Search..." oninput="handleSearch()">
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--text2);cursor:pointer;user-select:none">
+        <input type="checkbox" id="semanticToggle" onchange="handleSearch()" style="width:auto;accent-color:var(--accent)">
+        语义搜索（本地向量 · 离线）
+      </label>
     </div>
     <div class="ctx-list" id="ctxList"></div>
     <div class="sidebar-footer">
@@ -824,7 +828,8 @@ function handleSearch(){
 
 async function doSearch(q){
   try{
-    const res=await api(`/api/search?q=${encodeURIComponent(q)}`);
+    const semantic=document.getElementById('semanticToggle').checked;
+    const res=await api(`/api/search?q=${encodeURIComponent(q)}${semantic?'&semantic=true':''}`);
     const results=res.data||[];
     const list=document.getElementById('ctxList');
     if(!results.length){list.innerHTML=`<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No results for "${esc(q)}"</div>`;return}
@@ -832,8 +837,8 @@ async function doSearch(q){
       <div class="ctx-item" onclick="selectCtx('${r.context.id}')">
         <div class="title">${esc(r.context.title)}</div>
         <div class="meta">
-          <span class="status-badge ${r.context.status}">${r.context.status}</span>
-          <span style="font-size:11px;color:var(--text3)">${esc(r.entry.entry_type)} · ${esc(r.entry.content.slice(0,50))}...</span>
+          ${semantic?`<span class="tag" style="color:var(--accent)">${(r.score||0).toFixed(3)}</span>`:`<span class="status-badge ${r.context.status}">${r.context.status}</span>`}
+          <span style="font-size:11px;color:var(--text3)">${esc(r.entry.entry_type||'')} · ${esc((r.entry.content||'').slice(0,50))}...</span>
         </div>
       </div>
     `).join('');

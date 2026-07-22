@@ -62,7 +62,7 @@ impl McpServer {
                     },
                     "serverInfo": {
                         "name": "besure",
-                        "version": "0.60.0"
+                        "version": "0.61.0"
                     }
                 }
             }),
@@ -134,11 +134,12 @@ impl McpServer {
             }),
             json!({
                 "name": "besure_search",
-                "description": "搜索所有上下文（全文匹配）",
+                "description": "搜索所有上下文。semantic=false 全文匹配（默认）；semantic=true 本地语义搜索（bge-small-zh，离线向量），可命中语义相关但不含关键词的记忆。",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "query": {"type": "string", "description": "搜索关键词"}
+                        "query": {"type": "string", "description": "搜索关键词或语义描述"},
+                        "semantic": {"type": "boolean", "description": "true=本地语义向量搜索，false=全文匹配（默认）"}
                     },
                     "required": ["query"]
                 }
@@ -479,11 +480,24 @@ impl McpServer {
         }
         vault.write_entry_md(&entry).map_err(|e| e.to_string())?;
 
+        // 自动增量索引（失败降级，不阻塞 add）
+        if let Err(e) = Self::try_index_entry(&vault, &entry) {
+            eprintln!("⚠️  auto-index skipped ({}): {}", entry.id, e);
+        }
+
         if tags.is_empty() {
             Ok(format!("✓ Added {} entry to {}", entry_type, id))
         } else {
             Ok(format!("✓ Added {} entry to {}  🏷 {}", entry_type, id, tags.join(", ")))
         }
+    }
+
+    fn try_index_entry(vault: &Vault, entry: &Entry) -> anyhow::Result<()> {
+        let provider = crate::ai::EmbeddingProvider::from_app_config();
+        let vec = provider.embed(&entry.content)?;
+        let store = crate::ai::VectorStore::open(&vault.root.join("vectors.db"))?;
+        store.upsert_embedding(&entry.id, &entry.context_id, Some(&entry.id), &entry.content, &vec)?;
+        Ok(())
     }
 
     fn tool_list_tags(_args: &Value) -> Result<String, String> {
@@ -504,6 +518,10 @@ impl McpServer {
     fn tool_search(args: &Value) -> Result<String, String> {
         let vault = Self::get_vault()?;
         let query = args.get("query").and_then(|q| q.as_str()).ok_or("missing 'query'")?;
+        let semantic = args.get("semantic").and_then(|s| s.as_bool()).unwrap_or(false);
+        if semantic {
+            return Self::tool_semantic_search(&vault, query);
+        }
         let db = vault.database().map_err(|e| e.to_string())?;
         let results = db.search(query).map_err(|e| e.to_string())?;
 
@@ -521,6 +539,33 @@ impl McpServer {
             lines.push(format!("  [{}] {} | {}", entry.date, entry.entry_type, entry.content));
         }
         lines.push(format!("\n{} results found.", results.len()));
+        Ok(lines.join("\n"))
+    }
+
+    fn tool_semantic_search(vault: &Vault, query: &str) -> Result<String, String> {
+        let vec_db_path = vault.root.join("vectors.db");
+        if !vec_db_path.exists() {
+            return Err("No vectors indexed yet. Run 'besure index --all' first.".to_string());
+        }
+        let provider = crate::ai::EmbeddingProvider::from_app_config();
+        let query_vec = provider.embed(query).map_err(|e| e.to_string())?;
+        let store = crate::ai::VectorStore::open(&vec_db_path).map_err(|e| e.to_string())?;
+        let results = store.search(&query_vec, 10).map_err(|e| e.to_string())?;
+
+        if results.is_empty() {
+            return Ok(format!("No semantic results for '{}'.", query));
+        }
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let mut lines = vec![format!("Semantic search results for \"{}\":", query)];
+        for r in &results {
+            let meta = r.entry_id.as_deref()
+                .and_then(|eid| db.get_entry(eid).ok().flatten())
+                .map(|e| format!("{} | {}", e.date, e.entry_type))
+                .unwrap_or_default();
+            lines.push(format!("  [{:.3}] {} | {} | {}", r.score, r.context_id, meta,
+                r.chunk_text.chars().take(80).collect::<String>()));
+        }
         Ok(lines.join("\n"))
     }
 

@@ -180,6 +180,9 @@ pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_t
     }
     vault.write_entry_md(&entry)?;
 
+    // 自动增量索引（同步，embedding 不可用时降级跳过，绝不阻塞 add）
+    let _ = index_entry(&vault, &entry.id, &context_id, &final_content, &app_config.embedding);
+
     if tags.is_empty() {
         println!("✓ Added {} entry to {}", entry_type, context_id);
     } else {
@@ -615,6 +618,88 @@ pub fn cmd_appconfig_set(key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+// === semantic index ===
+/// 给单条 entry 生成向量并写入 vectors.db（失败降级，不 panic）
+fn index_entry(
+    vault: &Vault,
+    entry_id: &str,
+    context_id: &str,
+    content: &str,
+    emb_config: &EmbeddingConfig,
+) -> Result<()> {
+    let provider = EmbeddingProvider::new(emb_config.clone());
+    let vec = provider.embed(content)?;
+    let vec_db_path = vault.root.join("vectors.db");
+    let store = VectorStore::open(&vec_db_path)?;
+    store.upsert_embedding(entry_id, context_id, Some(entry_id), content, &vec)?;
+    Ok(())
+}
+
+/// `besure index [--context <id>] [--all]`：给存量 entry 批量建向量索引
+pub fn cmd_index(all: bool, context: Option<&str>, rebuild: bool) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+    let config = load_config().unwrap_or_default();
+
+    // 确定要索引的 entries
+    let entries = if let Some(ctx) = context {
+        let found = db.find_contexts_fuzzy(ctx)?;
+        if found.is_empty() {
+            bail!("No context found matching '{}'", ctx);
+        }
+        db.list_entries(&found[0].id)?
+    } else if all {
+        let mut all_entries = Vec::new();
+        for c in db.list_contexts()? {
+            all_entries.extend(db.list_entries(&c.id).unwrap_or_default());
+        }
+        all_entries
+    } else {
+        // 默认：当前 context
+        let cur = vault.current_context
+            .as_ref()
+            .context("no current context; use --all or --context <id>")?;
+        db.list_entries(cur)?
+    };
+
+    if entries.is_empty() {
+        println!("No entries to index.");
+        return Ok(());
+    }
+
+    let vec_db_path = vault.root.join("vectors.db");
+    let store = VectorStore::open(&vec_db_path)?;
+    let provider = EmbeddingProvider::new(config.embedding);
+
+    let total = entries.len();
+    println!("Indexing {} entries (local embedding, first run downloads model ~100MB)...", total);
+
+    let mut indexed = 0usize;
+    let mut skipped = 0usize;
+    for e in &entries {
+        // 已索引跳过（除非 --rebuild）
+        if !rebuild && store.has_entry(&e.id).unwrap_or(false) {
+            skipped += 1;
+            continue;
+        }
+        match provider.embed(&e.content) {
+            Ok(vec) => {
+                store.upsert_embedding(&e.id, &e.context_id, Some(&e.id), &e.content, &vec)?;
+                indexed += 1;
+                if indexed % 10 == 0 {
+                    println!("  {} / {} ...", indexed + skipped, total);
+                }
+            }
+            Err(err) => {
+                eprintln!("  skip {} (embed failed: {})", e.id, err);
+            }
+        }
+    }
+
+    println!("✓ Indexed {} new, {} already indexed ({} total in vault)", indexed, skipped, store.count().unwrap_or(0));
+    Ok(())
+}
+
 // === semantic search ===
 fn do_semantic_search(query: &str) -> Result<()> {
     let vault = get_unlocked_vault()?;
@@ -624,7 +709,7 @@ fn do_semantic_search(query: &str) -> Result<()> {
 
     let vec_db_path = vault.root.join("vectors.db");
     if !vec_db_path.exists() {
-        bail!("No vectors indexed yet. Run 'besure index' to build the index.");
+        bail!("No vectors indexed yet. Run 'besure index --all' to build the index.");
     }
 
     let store = VectorStore::open(&vec_db_path)?;
@@ -635,10 +720,29 @@ fn do_semantic_search(query: &str) -> Result<()> {
         return Ok(());
     }
 
+    let db = vault.database()?;
     println!("Semantic search results for \"{}\":\n", query);
-    for (i, r) in results.iter().enumerate() {
-        println!("  [{}] {:.2} | {} | {}", i + 1, r.score, r.context_id, truncate(&r.chunk_text, 50));
+    let mut current_ctx = String::new();
+    for r in &results {
+        if r.context_id != current_ctx {
+            current_ctx = r.context_id.clone();
+            let title = db.get_context(&r.context_id)?
+                .map(|c| c.title)
+                .unwrap_or_else(|| r.context_id.clone());
+            println!("─── {} ({}) ───", title, r.context_id);
+        }
+        let meta = r.entry_id.as_deref()
+            .and_then(|eid| db.get_entry(eid).ok().flatten())
+            .map(|e| format!("{} | {}", e.date, e.entry_type))
+            .unwrap_or_default();
+        println!(
+            "  [{:.3}] {} | {}",
+            r.score,
+            meta,
+            truncate(r.chunk_text.trim(), 60)
+        );
     }
+    println!("\n{} results found.", results.len());
     Ok(())
 }
 
@@ -1627,6 +1731,7 @@ besure add "内容" --type milestone                    # ❌ 危险！依赖全
 
 ### 查询历史
 - `besure search "关键词"` — 全文搜索
+- `besure search "意思相近的描述" --semantic` — 语义搜索（本地向量，离线）
 - `besure query --last 7d` — 最近 7 天
 - `besure log` — 当前上下文时间线
 <!-- BESURE-AUTO-END -->
