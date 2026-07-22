@@ -50,3 +50,5 @@ chroma/
 
 /target
 target/
+.fastembed_cache/
+vectors.db
