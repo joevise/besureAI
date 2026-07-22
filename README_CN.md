@@ -23,7 +23,7 @@
 | 痛点 | 方案 |
 |------|------|
 | 🔀 切换项目时**上下文丢失** | 类似 git branch 的上下文隔离——专注一个，秒级切换 |
-| 🤖 **AI Agent 无法跨会话记忆** | 原生 MCP Server（22 个 tools）——Claude/Cursor/OpenClaw 可直接存取上下文 |
+| 🤖 **AI Agent 无法跨会话记忆** | 原生 MCP Server（23 个 tools）——Claude/Cursor/OpenClaw 可直接存取上下文 |
 | 🔐 **多个 Agent 之间无隔离** | 多 Vault 架构——每个 Agent 拥有物理隔离的独立记忆空间 |
 | ☁️ **云依赖和隐私担忧** | 100% 本地——SQLite + Markdown，零云服务 |
 | 🔓 **数据安全** | AES-256-GCM + Argon2id 加密——密钥永不落盘 |
@@ -178,7 +178,7 @@ AI Agent 可以：
 - **创建上下文** → 开始新项目记忆
 - **导出分享** → 交接给同事
 
-### MCP Tools（22 个）
+### MCP Tools（23 个）
 
 | Tool | 用途 |
 |------|------|
@@ -301,7 +301,7 @@ besure purge <id>                 永久删除（不可恢复）
 # === 服务 ===
 besure setup [--agent-name <n>]      一键配置：初始化 + Agent 铁律注入
 besure serve [--port 7788]        启动 Web Dashboard + REST API
-besure mcp                        启动 MCP Server（stdio，22 个 tools）
+besure mcp                        启动 MCP Server（stdio，23 个 tools）
 besure export <context>           导出为加密 .besure（默认）
 besure export <context> --format md   导出为 Markdown（旧版）
 besure import <file.besure>       导入加密 .besure（按 id 去重）
@@ -352,6 +352,8 @@ Step 3: Inject mandatory recording rules
 | **V0.5.5** | ✅ 完成 | Dashboard 多 Agent 视角：侧边栏 Agent 列表、切换数据源 |
 | **V0.56** | ✅ 完成 | `besure setup` + 强制记忆铁律：多平台检测、幂等注入 AGENTS.md |
 | **V0.58** | ✅ 完成 | 涌现式自动标签：砍掉 Config 概念，一切归于 entry + 自动扁平大类标签。add 时 LLM 同步打标，tag_vocab 标签库复用防同义词爆炸，`besure tags` / `besure retag`，Dashboard Stats 改为 By Tag（20 MCP tools） |
+| **V0.59** | ✅ 完成 | 加密导出/导入：`.besure` 自有加密格式（AES-256-GCM + Argon2id，不是 zip——无密码无法被任何工具打开）。`besure export --password` / `besure import --password`，vault-scoped REST 端点，Dashboard Export/Import UI（21 MCP tools） |
+| **V0.60** | ✅ 完成 | 回收站机制：Context/Entry 软删除入回收站，可恢复、可永久清除。`besure delete/restore/trash/purge`，Dashboard Trash 视图，所有列表/统计/查询排除已删除项（23 MCP tools） |
 | **下一步** | 📋 计划中 | Tauri 桌面 APP、crates.io 发布、GitHub Actions CI、Product Hunt 上线 |
 | **未来** | 📋 计划中 | VS Code 插件、浏览器插件、团队协作 |
 

@@ -21,7 +21,7 @@ You work on multiple projects. You switch between tasks. Every time you switch, 
 | Problem | Solution |
 |---------|----------|
 | 🔀 **Context loss** when switching projects | Git-branch-like context isolation — work on one, switch instantly |
-| 🤖 **AI agents can't remember** across sessions | Native MCP Server (22 tools) — Claude, Cursor, OpenClaw can store & retrieve context |
+| 🤖 **AI agents can't remember** across sessions | Native MCP Server (23 tools) — Claude, Cursor, OpenClaw can store & retrieve context |
 | 🔐 **Multiple agents, no isolation** | Multi-vault architecture — each agent gets its own physically isolated vault |
 | ☁️ **Cloud dependency & privacy concerns** | 100% local — SQLite + Markdown, zero cloud required |
 | 🔓 **Data security** | AES-256-GCM + Argon2id encryption — keys never touch disk |
@@ -181,7 +181,7 @@ Now your AI agent can:
 - **Create contexts** → start new project memory
 - **Export & share** → hand off context to teammates
 
-### MCP Tools (22)
+### MCP Tools (23)
 
 | Tool | Purpose |
 |------|---------|
@@ -303,7 +303,7 @@ besure purge <id>                 Permanently delete (irreversible)
 
 # === Server ===
 besure serve [--port 7788]        Start web dashboard + REST API
-besure mcp                        Start MCP server (stdio, 22 tools)
+besure mcp                        Start MCP server (stdio, 23 tools)
 besure export <context>           Export to encrypted .besure (default)
 besure export <context> --format md   Export to Markdown (legacy)
 besure import <file.besure>       Import encrypted .besure (dedupes by id)
@@ -368,6 +368,8 @@ Single binary. Zero external dependencies. Pure Rust.
 | **V0.5.5** | ✅ Done | Dashboard multi-Agent view: sidebar Agent list, data source switching |
 | **V0.56** | ✅ Done | `besure setup` + mandatory recording rules: multi-platform detection, idempotent injection |
 | **V0.58** | ✅ Done | Emergent auto-tagging: removed Config concept — everything is now entries + auto flat broad tags. LLM tags every entry on add (1-3 tags, sync), `tag_vocab` table with synonym reuse, `besure tags` / `besure retag`, Dashboard Stats now By Tag, Dashboard auth fix (BESURE_DASHBOARD_PASSWORD) (20 MCP tools) |
+| **V0.59** | ✅ Done | Encrypted export/import: `.besure` format (AES-256-GCM + Argon2id, not a zip — cannot be opened by any tool without password). `besure export --password` / `besure import --password`, vault-scoped REST endpoints, Dashboard Export/Import UI (21 MCP tools) |
+| **V0.60** | ✅ Done | Recycle Bin: soft delete contexts/entries to trash, restore or permanently purge. `besure delete/restore/trash/purge`, Dashboard Trash view, all list/stats/query exclude deleted items (23 MCP tools) |
 | **Next** | 📋 Planned | Tauri desktop app, crates.io publish, GitHub Actions CI, Product Hunt launch |
 | **Future** | 📋 Planned | VS Code extension, browser extension, team collaboration |
 
