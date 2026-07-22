@@ -181,7 +181,9 @@ pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_t
     vault.write_entry_md(&entry)?;
 
     // 自动增量索引（同步，embedding 不可用时降级跳过，绝不阻塞 add）
-    let _ = index_entry(&vault, &entry.id, &context_id, &final_content, &app_config.embedding);
+    if let Err(e) = index_entry(&vault, &entry.id, &context_id, &final_content, &app_config.embedding) {
+        eprintln!("⚠️  auto-index skipped ({}): {}", entry.id, e);
+    }
 
     if tags.is_empty() {
         println!("✓ Added {} entry to {}", entry_type, context_id);

@@ -8,7 +8,7 @@
 
 **Rust-powered · Local-first · End-to-end encrypted · MCP-native · Single binary**
 
-**Current version: 0.60.0** — Recycle Bin: soft delete contexts/entries to trash, restore or permanently purge.
+**Current version: 0.61.0** — Real semantic search: local fastembed (bge-small-zh-v1.5, 512-dim) runs fully offline — zero API cost, zero key, privacy-safe. `besure index` builds the vector index; `besure add` auto-indexes incrementally.
 
 ---
 
@@ -40,6 +40,15 @@ Besure AI Context has exactly **three** core concepts — nothing else:
 | **Auto Tags** | Every entry is automatically tagged with 1–3 broad flat tags by an LLM at `besure add` time (synchronous). Tags are emergent: a shared `tag_vocab` vocabulary reuses semantically identical tags to prevent synonym explosion. |
 
 > **No Config concept.** As of V0.58, there is no separate "config" feature — everything you used to store as config is just a regular entry, organized and found via auto tags. (App-level LLM/embedding provider settings live in `~/.besure/appconfig.json`, managed via `besure appconfig`.)
+
+### Semantic Search (V0.61)
+
+Semantic search runs **100% locally** via the embedded [`fastembed`](https://crates.io/crates/fastembed) engine with the **bge-small-zh-v1.5** model (512-dim, Chinese-friendly). No API, no key, no cost — works fully offline, and your data never leaves the machine.
+
+- **Auto incremental indexing**: every `besure add` embeds the new entry into `vectors.db` (synchronous, degrades gracefully if the model is unavailable — add is never blocked).
+- **Backfill existing data**: `besure index --all` embeds all existing entries (skips already-indexed ones; use `--rebuild` to redo).
+- **Search**: `besure search "semantic description" --semantic` finds memories by meaning, not keywords. Also available in MCP (`besure_search` with `semantic: true`), REST (`GET /api/search?q=...&semantic=true`, vault-scoped `GET /api/vaults/:id/search?...&semantic=true`), and the Dashboard (语义搜索 toggle).
+- First run downloads the model (~100MB) to the HuggingFace cache (`~/.cache/huggingface`); afterwards it loads from disk in ~1-2s.
 
 ---
 
@@ -255,7 +264,8 @@ besure list                       List all contexts
 # === Entries ===
 besure add <content>              Add entry (--type, --from-file)
 besure log [context]              View timeline
-besure search <query>             Full-text search (--semantic for vector)
+besure search <query>             Full-text search (--semantic for local vector search)
+besure index [--all]              Build semantic vector index (local fastembed, offline)
 besure absorb [--auto]            Extract entries from conversation text
 
 # === Query & Manage (V0.4) ===
@@ -377,6 +387,7 @@ Single binary. Zero external dependencies. Pure Rust.
 | **V0.58** | ✅ Done | Emergent auto-tagging: removed Config concept — everything is now entries + auto flat broad tags. LLM tags every entry on add (1-3 tags, sync), `tag_vocab` table with synonym reuse, `besure tags` / `besure retag`, Dashboard Stats now By Tag, Dashboard auth fix (BESURE_DASHBOARD_PASSWORD) (20 MCP tools) |
 | **V0.59** | ✅ Done | Encrypted export/import: `.besure` format (AES-256-GCM + Argon2id, not a zip — cannot be opened by any tool without password). `besure export --password` / `besure import --password`, vault-scoped REST endpoints, Dashboard Export/Import UI (21 MCP tools) |
 | **V0.60** | ✅ Done | Recycle Bin: soft delete contexts/entries to trash, restore or permanently purge. `besure delete/restore/trash/purge`, Dashboard Trash view, all list/stats/query exclude deleted items (23 MCP tools) |
+| **V0.61** | ✅ Done | Real semantic search: local fastembed + bge-small-zh-v1.5 (512-dim), fully offline/zero-cost/zero-key. `besure index`, auto-index on add, `search --semantic`, MCP `semantic` param, REST `?semantic=true`, Dashboard semantic toggle |
 | **Next** | 📋 Planned | Tauri desktop app, crates.io publish, GitHub Actions CI, Product Hunt launch |
 | **Future** | 📋 Planned | VS Code extension, browser extension, team collaboration |
 

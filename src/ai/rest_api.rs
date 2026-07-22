@@ -524,7 +524,15 @@ fn semantic_search_vault(vault: &Vault, q: &str) -> Result<Vec<serde_json::Value
     if !vec_db_path.exists() {
         return Err((StatusCode::BAD_REQUEST, "No vectors indexed yet. Run 'besure index --all' first.".to_string()));
     }
-    let provider = crate::ai::EmbeddingProvider::from_app_config();
+    // 从当前 vault 目录读 appconfig（不依赖全局 BESURE_VAULT 环境变量）
+    let cfg_path = vault.root.join("appconfig.json");
+    let emb_config = std::fs::read_to_string(&cfg_path)
+        .ok()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+        .and_then(|v| v.get("embedding").cloned())
+        .and_then(|e| serde_json::from_value::<crate::ai::embedding::EmbeddingConfig>(e).ok())
+        .unwrap_or_default();
+    let provider = crate::ai::EmbeddingProvider::new(emb_config);
     let query_vec = provider.embed(q).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let store = crate::ai::VectorStore::open(&vec_db_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let results = store.search(&query_vec, 10).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

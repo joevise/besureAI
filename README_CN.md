@@ -8,7 +8,7 @@
 
 **Rust 引擎 · 本地部署 · 端到端加密 · MCP 原生 · 单二进制**
 
-**当前版本：0.60.0** — 回收站机制：Context/Entry 软删除入回收站，可恢复、可永久清除。
+**当前版本：0.61.0** — 真语义搜索：本地 fastembed（bge-small-zh-v1.5，512 维）完全离线运行——零 API 成本、零 key、隐私安全。`besure index` 建向量索引，`besure add` 自动增量索引。
 
 [English](README.md) | 中文
 
@@ -42,6 +42,15 @@ Besure AI Context 只有**三个**核心概念：
 | **自动标签（Auto Tags）** | `besure add` 时由 LLM 同步自动打 1-3 个扁平大类标签。标签是涌现式的：共享 `tag_vocab` 标签库复用语义相同的标签，防止同义词爆炸。 |
 
 > **没有 Config 概念。** V0.58 起不再有独立的 "config" 功能——以前当配置存的东西就是普通 entry，靠自动标签组织和检索。（App 级的 LLM/embedding provider 设置存放在 `~/.besure/appconfig.json`，用 `besure appconfig` 管理。）
+
+### 语义搜索（V0.61）
+
+语义搜索**完全本地**运行：内嵌 [`fastembed`](https://crates.io/crates/fastembed) 引擎 + **bge-small-zh-v1.5** 模型（512 维，中文友好）。无 API、无 key、零成本——完全离线可用，数据不出本机。
+
+- **自动增量索引**：每次 `besure add` 同步把新 entry 向量写入 `vectors.db`（模型不可用时优雅降级，绝不阻塞 add）。
+- **存量补建**：`besure index --all` 给所有存量 entry 建向量（已索引的自动跳过；`--rebuild` 强制重建）。
+- **搜索**：`besure search "语义描述" --semantic` 按意思找记忆，而不是关键词。MCP（`besure_search` 加 `semantic: true`）、REST（`GET /api/search?q=...&semantic=true`，vault 级 `GET /api/vaults/:id/search?...&semantic=true`）、Dashboard（"语义搜索"开关）均已支持。
+- 首次运行自动下载模型（~100MB）到 HuggingFace 缓存（`~/.cache/huggingface`），之后本地加载仅需 1-2 秒。
 
 ---
 
@@ -252,7 +261,8 @@ besure list                       列出所有上下文
 # === 记录 ===
 besure add <content>              添加记录（--type, --from-file）
 besure log [context]              查看时间线
-besure search <query>             全文搜索（--semantic 语义搜索）
+besure search <query>             全文搜索（--semantic 本地语义向量搜索）
+besure index [--all]              建语义向量索引（本地 fastembed，离线）
 besure absorb [--auto]            从对话提取记录
 
 # === 查询与管理（V0.4）===
@@ -361,6 +371,7 @@ Step 3: Inject mandatory recording rules
 | **V0.58** | ✅ 完成 | 涌现式自动标签：砍掉 Config 概念，一切归于 entry + 自动扁平大类标签。add 时 LLM 同步打标，tag_vocab 标签库复用防同义词爆炸，`besure tags` / `besure retag`，Dashboard Stats 改为 By Tag（20 MCP tools） |
 | **V0.59** | ✅ 完成 | 加密导出/导入：`.besure` 自有加密格式（AES-256-GCM + Argon2id，不是 zip——无密码无法被任何工具打开）。`besure export --password` / `besure import --password`，vault-scoped REST 端点，Dashboard Export/Import UI（21 MCP tools） |
 | **V0.60** | ✅ 完成 | 回收站机制：Context/Entry 软删除入回收站，可恢复、可永久清除。`besure delete/restore/trash/purge`，Dashboard Trash 视图，所有列表/统计/查询排除已删除项（23 MCP tools） |
+| **V0.61** | ✅ 完成 | 真语义搜索：本地 fastembed + bge-small-zh-v1.5（512 维），完全离线/零成本/零 key。`besure index` 补建索引、add 自动增量索引、`search --semantic`、MCP `semantic` 参数、REST `?semantic=true`、Dashboard 语义搜索开关 |
 | **下一步** | 📋 计划中 | Tauri 桌面 APP、crates.io 发布、GitHub Actions CI、Product Hunt 上线 |
 | **未来** | 📋 计划中 | VS Code 插件、浏览器插件、团队协作 |
 

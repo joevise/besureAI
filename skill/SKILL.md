@@ -107,8 +107,9 @@ besure log "项目关键词"
 # 全文搜索
 besure search "关键词"
 
-# 语义搜索（需配置 embedding API）
+# 语义搜索（V0.61+ 本地 fastembed bge-small-zh，完全离线、零成本、零 key）
 besure search "意思相近的描述" --semantic
+besure index --all          # 给存量 entry 补建向量索引（add 时自动增量索引）
 
 # 导出上下文（默认加密 .besure，AES-256-GCM，只有 besure import + 密码能还原）
 besure export "项目名" --password *** -o backup.besure
@@ -316,7 +317,7 @@ echo "对话内容..." | besure absorb --auto
 
 - 每次调用 besure 都是独立进程
 - 加密模式下必须先 unlock 才能操作
-- search 默认全文匹配；--semantic 需配置 embedding API
+- search 默认全文匹配；--semantic 走本地 fastembed 语义向量（离线，首次使用下载模型 ~100MB 到 ~/.cache）；存量数据先 `besure index --all` 补建索引
 - V3 新字段（links/status/valid_until/superseded_by/resolved）向下兼容，旧 entry 不受影响
 - V0.4 query 默认返回 20 条，紧凑格式（对 Agent 友好）
 - V0.4 resolve 标记完成，append 追加内容（加分隔线+时间戳）
