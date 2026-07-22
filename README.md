@@ -288,6 +288,13 @@ besure appconfig <key> <value>    Set app-level config, e.g.:
                                   llm.provider / llm.api_url / llm.api_key / llm.model
                                   embedding.provider / embedding.api_url / embedding.api_key / embedding.model
 
+# --- Recommended LLM for auto-tagging: OpenRouter + DeepSeek V4 Flash (cheap & fast) ---
+# Get your own key at https://openrouter.ai/keys, then:
+besure appconfig llm.provider openrouter
+besure appconfig llm.api_url https://openrouter.ai/api/v1/chat/completions
+besure appconfig llm.api_key sk-or-v1-YOUR_OWN_KEY
+besure appconfig llm.model deepseek/deepseek-v4-flash
+
 # === Closure (V3) ===
 besure link <id> --to <id>        Link entries (caused_by/supersedes/related_to)
 besure expire <id>                Mark entry as expired

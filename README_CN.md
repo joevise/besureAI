@@ -285,6 +285,13 @@ besure appconfig <key> <value>    设置 app 级配置，如：
                                   llm.provider / llm.api_url / llm.api_key / llm.model
                                   embedding.provider / embedding.api_url / embedding.api_key / embedding.model
 
+# --- 推荐自动打标 LLM：OpenRouter + DeepSeek V4 Flash（便宜又快）---
+# 到 https://openrouter.ai/keys 拿你自己的 key，然后：
+besure appconfig llm.provider openrouter
+besure appconfig llm.api_url https://openrouter.ai/api/v1/chat/completions
+besure appconfig llm.api_key sk-or-v1-你自己的KEY
+besure appconfig llm.model deepseek/deepseek-v4-flash
+
 # === 闭环（V3）===
 besure link <id> --to <id>        关联记录（caused_by/supersedes/related_to）
 besure expire <id>                标记过期

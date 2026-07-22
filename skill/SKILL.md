@@ -241,6 +241,13 @@ besure retag --all              # 全库
 - 标签库存 `tag_vocab` 表：新标签先匹配已有库，语义相同复用（避免"前端"/"frontend"同义词爆炸），没有才新建
 - LLM 不可用（provider=dummy / 无 api_url / 请求失败）时**降级跳过打标**，绝不阻塞 add
 - 打标复用 `~/.besure/appconfig.json` 的 `llm` 配置（同 absorb），key 为 `llm.provider` / `llm.api_url` / `llm.api_key` / `llm.model`，用 `besure appconfig <key> <value>` 设置
+- **推荐配置**：OpenRouter + DeepSeek V4 Flash（便宜快）。用户需到 https://openrouter.ai/keys 拿自己的 key：
+  ```bash
+  besure appconfig llm.provider openrouter
+  besure appconfig llm.api_url https://openrouter.ai/api/v1/chat/completions
+  besure appconfig llm.api_key sk-or-v1-你自己的KEY
+  besure appconfig llm.model deepseek/deepseek-v4-flash
+  ```
 - **没有 config 命令**：V0.58 起砍掉 context 级 `besure config set/get/list`（MCP 的 `besure_config_*` 同步移除）。以前当配置存的内容直接 `besure add`，靠自动标签检索
 - Dashboard 每条 entry 显示标签，可按标签筛选（前端过滤）
 - MCP tool `besure_list_tags` 返回标签库；REST `GET /api/tags`
