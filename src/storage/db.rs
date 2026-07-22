@@ -45,7 +45,8 @@ impl Database {
                 current_milestone TEXT NOT NULL DEFAULT '',
                 next_steps  TEXT NOT NULL DEFAULT '[]',
                 related     TEXT NOT NULL DEFAULT '[]',
-                shareable   INTEGER NOT NULL DEFAULT 0
+                shareable   INTEGER NOT NULL DEFAULT 0,
+                deleted     INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS entries (
@@ -61,6 +62,7 @@ impl Database {
                 status      TEXT NOT NULL DEFAULT 'active',
                 superseded_by TEXT,
                 resolved    BOOLEAN NOT NULL DEFAULT 0,
+                deleted     INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (context_id) REFERENCES contexts(id)
             );
 
@@ -81,17 +83,19 @@ impl Database {
     /// Idempotent migration: add new columns to legacy databases.
     /// Safe to run multiple times — ignores "duplicate column" errors.
     fn run_migrations(&self) -> Result<()> {
-        let columns: &[(&str, &str)] = &[
-            ("links", "TEXT NOT NULL DEFAULT '[]'"),
-            ("valid_from", "TEXT NOT NULL DEFAULT ''"),
-            ("valid_until", "TEXT"),
-            ("status", "TEXT NOT NULL DEFAULT 'active'"),
-            ("superseded_by", "TEXT"),
-            ("resolved", "BOOLEAN NOT NULL DEFAULT 0"),
+        let columns: &[(&str, &str, &str)] = &[
+            ("entries", "links", "TEXT NOT NULL DEFAULT '[]'"),
+            ("entries", "valid_from", "TEXT NOT NULL DEFAULT ''"),
+            ("entries", "valid_until", "TEXT"),
+            ("entries", "status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("entries", "superseded_by", "TEXT"),
+            ("entries", "resolved", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("entries", "deleted", "INTEGER NOT NULL DEFAULT 0"),
+            ("contexts", "deleted", "INTEGER NOT NULL DEFAULT 0"),
         ];
 
-        for (col, def) in columns {
-            let sql = format!("ALTER TABLE entries ADD COLUMN {} {}", col, def);
+        for (table, col, def) in columns {
+            let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, col, def);
             match self.conn.execute(&sql, []) {
                 Ok(_) => {}
                 Err(e) => {
@@ -152,7 +156,7 @@ impl Database {
     /// List all contexts
     pub fn list_contexts(&self) -> Result<Vec<Context>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts ORDER BY updated DESC",
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE deleted = 0 ORDER BY updated DESC",
         )?;
 
         let contexts = stmt
@@ -166,7 +170,7 @@ impl Database {
     /// Filter contexts by status
     pub fn list_contexts_by_status(&self, status: &ContextStatus) -> Result<Vec<Context>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE status = ?1 ORDER BY updated DESC",
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE status = ?1 AND deleted = 0 ORDER BY updated DESC",
         )?;
 
         let contexts = stmt
@@ -181,7 +185,7 @@ impl Database {
     pub fn find_contexts_fuzzy(&self, query: &str) -> Result<Vec<Context>> {
         let pattern = format!("%{}%", query);
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE id LIKE ?1 OR title LIKE ?1 ORDER BY updated DESC",
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE (id LIKE ?1 OR title LIKE ?1) AND deleted = 0 ORDER BY updated DESC",
         )?;
 
         let contexts = stmt
@@ -254,7 +258,7 @@ impl Database {
     /// List all entries for a context (newest first)
     pub fn list_entries(&self, context_id: &str) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 ORDER BY date DESC",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 AND deleted = 0 ORDER BY date DESC",
         )?;
 
         let entries = stmt
@@ -268,7 +272,7 @@ impl Database {
     /// List entries by status within a context
     pub fn list_entries_by_status(&self, context_id: &str, status: &EntryStatus) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 AND status = ?2 ORDER BY date DESC",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 AND status = ?2 AND deleted = 0 ORDER BY date DESC",
         )?;
 
         let entries = stmt
@@ -282,7 +286,7 @@ impl Database {
     /// List entries that expire before a given date
     pub fn list_expiring_entries(&self, context_id: &str, before_date: &str) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 AND status = 'active' AND valid_until IS NOT NULL AND valid_until < ?2 ORDER BY valid_until ASC",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 AND status = 'active' AND valid_until IS NOT NULL AND valid_until < ?2 AND deleted = 0 ORDER BY valid_until ASC",
         )?;
 
         let entries = stmt
@@ -333,7 +337,8 @@ impl Database {
                       e.links, e.valid_from, e.valid_until, e.status, e.superseded_by, e.resolved
                FROM entries e
                JOIN contexts c ON e.context_id = c.id
-               WHERE e.content LIKE ?1 OR c.title LIKE ?1 OR c.summary LIKE ?1
+               WHERE (e.content LIKE ?1 OR c.title LIKE ?1 OR c.summary LIKE ?1)
+                 AND e.deleted = 0 AND c.deleted = 0
                ORDER BY e.date DESC"#,
         )?;
 
@@ -407,13 +412,13 @@ impl Database {
 
     /// Count contexts
     pub fn count_contexts(&self) -> Result<i64> {
-        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM contexts", [], |row| row.get(0))?;
+        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM contexts WHERE deleted = 0", [], |row| row.get(0))?;
         Ok(count)
     }
 
     /// Count entries
     pub fn count_entries(&self) -> Result<i64> {
-        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get(0))?;
+        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM entries WHERE deleted = 0", [], |row| row.get(0))?;
         Ok(count)
     }
 
@@ -478,7 +483,7 @@ impl Database {
     /// Unified query over entries with filters
     pub fn query_entries(&self, filter: &QueryFilter) -> Result<Vec<Entry>> {
         let mut sql = String::from(
-            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE 1=1",
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE deleted = 0",
         );
         let mut param_values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -557,7 +562,7 @@ impl Database {
         let total_entries = self.count_entries()?;
 
         let mut stmt = self.conn.prepare(
-            "SELECT c.title, COUNT(e.id) FROM contexts c LEFT JOIN entries e ON e.context_id = c.id GROUP BY c.id ORDER BY COUNT(e.id) DESC",
+            "SELECT c.title, COUNT(e.id) FROM contexts c LEFT JOIN entries e ON e.context_id = c.id AND e.deleted = 0 WHERE c.deleted = 0 GROUP BY c.id ORDER BY COUNT(e.id) DESC",
         )?;
         let by_context = stmt
             .query_map([], |row| {
@@ -567,7 +572,7 @@ impl Database {
             .collect();
 
         let mut stmt = self.conn.prepare(
-            "SELECT entry_type, COUNT(*) FROM entries GROUP BY entry_type ORDER BY COUNT(*) DESC",
+            "SELECT entry_type, COUNT(*) FROM entries WHERE deleted = 0 GROUP BY entry_type ORDER BY COUNT(*) DESC",
         )?;
         let by_type = stmt
             .query_map([], |row| {
@@ -577,7 +582,7 @@ impl Database {
             .collect();
 
         let mut stmt = self.conn.prepare(
-            "SELECT status, COUNT(*) FROM entries GROUP BY status ORDER BY COUNT(*) DESC",
+            "SELECT status, COUNT(*) FROM entries WHERE deleted = 0 GROUP BY status ORDER BY COUNT(*) DESC",
         )?;
         let by_status = stmt
             .query_map([], |row| {
@@ -587,7 +592,7 @@ impl Database {
             .collect();
 
         let resolved_count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM entries WHERE resolved = 1",
+            "SELECT COUNT(*) FROM entries WHERE resolved = 1 AND deleted = 0",
             [],
             |row| row.get(0),
         )?;
@@ -596,7 +601,7 @@ impl Database {
             .format("%Y-%m-%d")
             .to_string();
         let mut stmt = self.conn.prepare(
-            "SELECT substr(date, 1, 10) AS d, COUNT(*) FROM entries WHERE substr(date, 1, 10) >= ?1 GROUP BY d ORDER BY d DESC",
+            "SELECT substr(date, 1, 10) AS d, COUNT(*) FROM entries WHERE substr(date, 1, 10) >= ?1 AND deleted = 0 GROUP BY d ORDER BY d DESC",
         )?;
         let recent_activity = stmt
             .query_map(params![seven_days_ago], |row| {
@@ -619,7 +624,7 @@ impl Database {
     /// 获取单个 Context 的统计（含 by_tag，不含 by_context）
     pub fn get_context_stats(&self, context_id: &str) -> Result<ContextStats> {
         let total_entries: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM entries WHERE context_id = ?1",
+            "SELECT COUNT(*) FROM entries WHERE context_id = ?1 AND deleted = 0",
             params![context_id],
             |row| row.get(0),
         )?;
@@ -637,7 +642,7 @@ impl Database {
 
         // By Type
         let mut stmt = self.conn.prepare(
-            "SELECT entry_type, COUNT(*) FROM entries WHERE context_id = ?1 GROUP BY entry_type ORDER BY COUNT(*) DESC",
+            "SELECT entry_type, COUNT(*) FROM entries WHERE context_id = ?1 AND deleted = 0 GROUP BY entry_type ORDER BY COUNT(*) DESC",
         )?;
         let by_type = stmt
             .query_map(params![context_id], |row| {
@@ -648,7 +653,7 @@ impl Database {
 
         // By Status
         let mut stmt = self.conn.prepare(
-            "SELECT status, COUNT(*) FROM entries WHERE context_id = ?1 GROUP BY status ORDER BY COUNT(*) DESC",
+            "SELECT status, COUNT(*) FROM entries WHERE context_id = ?1 AND deleted = 0 GROUP BY status ORDER BY COUNT(*) DESC",
         )?;
         let by_status = stmt
             .query_map(params![context_id], |row| {
@@ -659,7 +664,7 @@ impl Database {
 
         // Resolved
         let resolved_count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM entries WHERE context_id = ?1 AND resolved = 1",
+            "SELECT COUNT(*) FROM entries WHERE context_id = ?1 AND resolved = 1 AND deleted = 0",
             params![context_id],
             |row| row.get(0),
         )?;
@@ -669,7 +674,7 @@ impl Database {
             .format("%Y-%m-%d")
             .to_string();
         let mut stmt = self.conn.prepare(
-            "SELECT substr(date, 1, 10) AS d, COUNT(*) FROM entries WHERE context_id = ?1 AND substr(date, 1, 10) >= ?2 GROUP BY d ORDER BY d DESC",
+            "SELECT substr(date, 1, 10) AS d, COUNT(*) FROM entries WHERE context_id = ?1 AND substr(date, 1, 10) >= ?2 AND deleted = 0 GROUP BY d ORDER BY d DESC",
         )?;
         let recent_activity = stmt
             .query_map(params![context_id, seven_days_ago], |row| {
@@ -686,6 +691,95 @@ impl Database {
             resolved_count,
             recent_activity,
         })
+    }
+
+    // === Recycle Bin ===
+
+    /// Soft-delete a context (and all its entries) → trash
+    pub fn soft_delete_context(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE contexts SET deleted = 1 WHERE id = ?1",
+            params![id],
+        )?;
+        self.conn.execute(
+            "UPDATE entries SET deleted = 1 WHERE context_id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Soft-delete an entry → trash
+    pub fn soft_delete_entry(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE entries SET deleted = 1 WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Restore a context (and all its entries) from trash
+    pub fn restore_context(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE contexts SET deleted = 0 WHERE id = ?1",
+            params![id],
+        )?;
+        self.conn.execute(
+            "UPDATE entries SET deleted = 0 WHERE context_id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Restore an entry from trash
+    pub fn restore_entry(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE entries SET deleted = 0 WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Permanently delete a context and all its entries (physical delete)
+    pub fn hard_delete_context(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM entries WHERE context_id = ?1",
+            params![id],
+        )?;
+        self.conn.execute(
+            "DELETE FROM contexts WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Permanently delete an entry (physical delete)
+    pub fn hard_delete_entry(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM entries WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// List all trashed (deleted=1) contexts and entries
+    pub fn list_trash(&self) -> Result<(Vec<Context>, Vec<Entry>)> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE deleted = 1 ORDER BY updated DESC",
+        )?;
+        let contexts = stmt
+            .query_map([], |row| self.row_to_context(row))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE deleted = 1 ORDER BY date DESC",
+        )?;
+        let entries = stmt
+            .query_map([], |row| self.row_to_entry(row))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok((contexts, entries))
     }
 }
 
@@ -1093,5 +1187,107 @@ mod tests {
         }).unwrap();
         assert_eq!(scoped.len(), 1);
         assert_eq!(scoped[0].content, "in a");
+    }
+
+    #[test]
+    fn test_soft_delete_and_restore_entry() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Trash Entry Test");
+        db.upsert_context(&ctx).unwrap();
+        let e = make_entry(&db, &ctx.id, "to trash", "note", "2026-07-10 10:00");
+
+        db.soft_delete_entry(&e.id).unwrap();
+
+        // Hidden from normal views
+        assert!(db.list_entries(&ctx.id).unwrap().is_empty());
+        assert_eq!(db.count_entries().unwrap(), 0);
+        assert!(db.query_entries(&QueryFilter {
+            context_id: Some(ctx.id.clone()),
+            limit: 20,
+            ..Default::default()
+        }).unwrap().is_empty());
+        assert_eq!(db.get_stats().unwrap().total_entries, 0);
+        assert!(db.search("to trash").unwrap().is_empty());
+
+        // Visible in trash
+        let (ctxs, entries) = db.list_trash().unwrap();
+        assert!(ctxs.is_empty());
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, e.id);
+
+        // Restore
+        db.restore_entry(&e.id).unwrap();
+        assert_eq!(db.list_entries(&ctx.id).unwrap().len(), 1);
+        assert_eq!(db.count_entries().unwrap(), 1);
+        let (ctxs, entries) = db.list_trash().unwrap();
+        assert!(ctxs.is_empty() && entries.is_empty());
+    }
+
+    #[test]
+    fn test_soft_delete_and_restore_context() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Trash Ctx Test");
+        db.upsert_context(&ctx).unwrap();
+        make_entry(&db, &ctx.id, "e1", "note", "2026-07-10 10:00");
+        make_entry(&db, &ctx.id, "e2", "note", "2026-07-11 10:00");
+
+        db.soft_delete_context(&ctx.id).unwrap();
+
+        assert!(db.list_contexts().unwrap().is_empty());
+        assert_eq!(db.count_contexts().unwrap(), 0);
+        assert_eq!(db.count_entries().unwrap(), 0);
+        assert!(db.list_entries(&ctx.id).unwrap().is_empty());
+        assert!(db.find_contexts_fuzzy("Trash Ctx").unwrap().is_empty());
+        assert_eq!(db.get_stats().unwrap().total_contexts, 0);
+        assert_eq!(db.get_context_stats(&ctx.id).unwrap().total_entries, 0);
+
+        let (ctxs, entries) = db.list_trash().unwrap();
+        assert_eq!(ctxs.len(), 1);
+        assert_eq!(entries.len(), 2);
+
+        db.restore_context(&ctx.id).unwrap();
+        assert_eq!(db.list_contexts().unwrap().len(), 1);
+        assert_eq!(db.list_entries(&ctx.id).unwrap().len(), 2);
+        let (ctxs, entries) = db.list_trash().unwrap();
+        assert!(ctxs.is_empty() && entries.is_empty());
+    }
+
+    #[test]
+    fn test_entry_independent_delete() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Indep Trash Test");
+        db.upsert_context(&ctx).unwrap();
+        let e1 = make_entry(&db, &ctx.id, "keep", "note", "2026-07-10 10:00");
+        let e2 = make_entry(&db, &ctx.id, "trash me", "note", "2026-07-11 10:00");
+
+        db.soft_delete_entry(&e2.id).unwrap();
+        let remaining = db.list_entries(&ctx.id).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, e1.id);
+        assert_eq!(db.get_context_stats(&ctx.id).unwrap().total_entries, 1);
+    }
+
+    #[test]
+    fn test_hard_delete() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Purge Test");
+        db.upsert_context(&ctx).unwrap();
+        let e = make_entry(&db, &ctx.id, "purge me", "note", "2026-07-10 10:00");
+
+        // Purge entry
+        db.soft_delete_entry(&e.id).unwrap();
+        db.hard_delete_entry(&e.id).unwrap();
+        assert!(db.get_entry(&e.id).unwrap().is_none());
+        let (_, entries) = db.list_trash().unwrap();
+        assert!(entries.is_empty());
+
+        // Purge context (with remaining entries)
+        make_entry(&db, &ctx.id, "ctx entry", "note", "2026-07-10 10:00");
+        db.soft_delete_context(&ctx.id).unwrap();
+        db.hard_delete_context(&ctx.id).unwrap();
+        assert!(db.get_context(&ctx.id).unwrap().is_none());
+        let (ctxs, entries) = db.list_trash().unwrap();
+        assert!(ctxs.is_empty() && entries.is_empty());
+        assert_eq!(db.count_entries().unwrap(), 0);
     }
 }

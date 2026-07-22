@@ -171,6 +171,27 @@ besure append <entry_id> --from-file supplement.md
 besure stats
 ```
 
+### V0.60 回收站
+
+删除不是物理删除——先移入回收站，可恢复；回收站里再 purge 才是真删除：
+
+```bash
+# === 软删除（移入回收站）===
+besure delete context <id>   # context 及其 entries 一起移入
+besure delete entry <id>     # 单个 entry 移入
+
+# === 查看回收站 ===
+besure trash
+
+# === 恢复（自动识别 context 还是 entry）===
+besure restore <id>
+
+# === 永久删除（不可恢复，慎用）===
+besure purge <id>
+```
+
+注意：正常列表/搜索/统计均不包含回收站内容。
+
 ### V0.5 多 Vault 架构
 
 每个 Agent 默认有自己的 vault（物理隔离），通过环境变量配置：

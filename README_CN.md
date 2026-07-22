@@ -8,7 +8,7 @@
 
 **Rust 引擎 · 本地部署 · 端到端加密 · MCP 原生 · 单二进制**
 
-**当前版本：0.59.0** — 涌现式自动标签；砍掉 Config 概念（一切归于 entry + 自动标签）。
+**当前版本：0.60.0** — 回收站机制：Context/Entry 软删除入回收站，可恢复、可永久清除。
 
 [English](README.md) | 中文
 
@@ -290,6 +290,13 @@ besure link <id> --to <id>        关联记录（caused_by/supersedes/related_to
 besure expire <id>                标记过期
 besure supersede <old> <new>      标记替代
 besure recall                     召回需要注意的记忆
+
+# === 回收站（V0.60）===
+besure delete context <id>        软删除 context（含其 entries，移入回收站）
+besure delete entry <id>          软删除 entry
+besure trash                      查看回收站
+besure restore <id>               从回收站恢复（自动识别 context/entry）
+besure purge <id>                 永久删除（不可恢复）
 
 # === 服务 ===
 besure setup [--agent-name <n>]      一键配置：初始化 + Agent 铁律注入

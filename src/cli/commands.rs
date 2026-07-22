@@ -938,6 +938,102 @@ pub fn cmd_append(entry_id: &str, content: Option<&str>, from_file: Option<&str>
     Ok(())
 }
 
+// === NEW: delete/restore/trash/purge commands (Recycle Bin) ===
+
+/// `besure delete <context|entry> <id>` — soft delete (move to trash)
+pub fn cmd_delete(kind: &str, id: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    match kind {
+        "context" => {
+            let ctx = db.get_context(id)?
+                .or_else(|| db.find_contexts_fuzzy(id).ok()?.into_iter().next())
+                .context("context not found")?;
+            db.soft_delete_context(&ctx.id)?;
+            println!("✓ Context '{}' ({}) moved to trash (entries included)", ctx.title, ctx.id);
+            println!("  Restore with: besure restore {}", ctx.id);
+        }
+        "entry" => {
+            let entry = db.get_entry(id)?.context("entry not found")?;
+            db.soft_delete_entry(&entry.id)?;
+            println!("✓ Entry {} moved to trash", entry.id);
+            println!("  content: {}", truncate(&entry.content, 60));
+            println!("  Restore with: besure restore {}", entry.id);
+        }
+        _ => bail!("Invalid kind '{}'. Use 'context' or 'entry'.", kind),
+    }
+    Ok(())
+}
+
+/// `besure restore <id>` — restore a context or entry from trash
+pub fn cmd_restore(id: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    // Try context first, then entry
+    if let Some(ctx) = db.get_context(id)? {
+        db.restore_context(&ctx.id)?;
+        println!("✓ Context '{}' ({}) restored (entries included)", ctx.title, ctx.id);
+        return Ok(());
+    }
+    if let Some(entry) = db.get_entry(id)? {
+        db.restore_entry(&entry.id)?;
+        println!("✓ Entry {} restored", entry.id);
+        println!("  content: {}", truncate(&entry.content, 60));
+        return Ok(());
+    }
+    bail!("No context or entry found with id '{}'", id)
+}
+
+/// `besure trash` — view trash contents
+pub fn cmd_trash() -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+    let (contexts, entries) = db.list_trash()?;
+
+    if contexts.is_empty() && entries.is_empty() {
+        println!("🗑 Trash is empty.");
+        return Ok(());
+    }
+
+    println!("🗑 Trash\n");
+    if !contexts.is_empty() {
+        println!("Contexts ({}):", contexts.len());
+        for ctx in &contexts {
+            println!("  {} ({}) [{}]", ctx.title, ctx.id, ctx.status);
+        }
+        println!();
+    }
+    if !entries.is_empty() {
+        println!("Entries ({}):", entries.len());
+        for e in &entries {
+            println!("  {} | {} | {} | {}", e.id, e.context_id, e.date, truncate(e.content.trim(), 60));
+        }
+        println!();
+    }
+    println!("Restore: besure restore <id>   Purge: besure purge <id>");
+    Ok(())
+}
+
+/// `besure purge <id>` — permanently delete from trash (irreversible)
+pub fn cmd_purge(id: &str) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let db = vault.database()?;
+
+    if let Some(ctx) = db.get_context(id)? {
+        db.hard_delete_context(&ctx.id)?;
+        println!("✓ Context '{}' ({}) permanently deleted", ctx.title, ctx.id);
+        return Ok(());
+    }
+    if let Some(entry) = db.get_entry(id)? {
+        db.hard_delete_entry(&entry.id)?;
+        println!("✓ Entry {} permanently deleted", entry.id);
+        return Ok(());
+    }
+    bail!("No context or entry found with id '{}'", id)
+}
+
 // === NEW: stats command ===
 /// `besure stats` — global statistics overview
 pub fn cmd_stats() -> Result<()> {

@@ -1,6 +1,6 @@
 [package]
 name = "besure"
-version = "0.59.0"
+version = "0.60.0"
 edition = "2021"
 description = "貔貅记忆 Besure AI — Context Switch Memory System. 本地优先多上下文记忆，端到端加密，CLI + MCP + REST API。"
 license = "MIT"

@@ -353,7 +353,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.59.0</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.60.0</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -365,6 +365,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
     <div class="ctx-list" id="ctxList"></div>
     <div class="sidebar-footer">
       <button class="btn btn-primary" onclick="showCreateModal()" style="flex:1">+ New Context</button>
+      <button class="btn" onclick="showTrash()" title="Trash">🗑</button>
       <button class="btn" onclick="showImportModal()" title="Import .besure">⇪</button>
       <button class="btn" onclick="refresh()">↻</button>
     </div>
@@ -418,6 +419,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
     <div class="modal-field"><label>Password *</label><input type="password" id="importPassword" placeholder="Export password"></div>
     <div class="modal-field"><label>Target Context (optional)</label><select id="importTarget"><option value="">Restore original context</option></select></div>
     <div class="modal-actions"><button class="btn" onclick="hideModal('importModal')">Cancel</button><button class="btn btn-primary" onclick="doImport()">Import</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="trashModal">
+  <div class="modal" style="width:560px">
+    <h3>🗑 Trash</h3>
+    <div id="trashContent" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-actions"><button class="btn" onclick="hideModal('trashModal')">Close</button></div>
   </div>
 </div>
 
@@ -715,7 +724,7 @@ function renderDetail(ctx,entries){
       <div class="entry-body">
         <div class="entry-top">
           <span class="entry-type ${e.entry_type}">${TYPE_ICONS[e.entry_type]||'📝'} ${e.entry_type}${statusBadgeHtml}${resolvedBadge}</span>
-          <span class="entry-date">${esc(e.date)} ${resolveBtn}</span>
+          <span class="entry-date">${esc(e.date)} ${resolveBtn} <button class="btn btn-sm" style="padding:2px 6px;font-size:11px;color:var(--text3)" title="Move to trash" onclick="deleteEntry('${e.id}')">🗑</button></span>
         </div>
         <div class="entry-content">${esc(e.content)}</div>
         <div style="margin-top:4px"><button class="btn btn-sm" style="padding:2px 8px;font-size:11px;color:var(--text3)" onclick="toggleAppend('${e.id}')">+ Append</button>
@@ -796,6 +805,7 @@ function renderDetail(ctx,entries){
       <div style="display:flex;gap:8px;flex-shrink:0">
         <button class="btn btn-primary btn-sm" onclick="showEntryModal()">+ Add Entry</button>
         <button class="btn btn-sm" onclick="exportCtx('${ctx.id}')">Export</button>
+        <button class="btn btn-sm" onclick="deleteContext('${ctx.id}')">🗑 Delete</button>
       </div>
     </div>
     ${tabsHtml}
@@ -1022,6 +1032,78 @@ async function loadStats(){
     html+='</div>';
     document.getElementById('statsContent').innerHTML=html;
   }catch(e){document.getElementById('statsContent').innerHTML='<p>Error: '+e.message+'</p>'}
+}
+
+// === Recycle Bin ===
+async function deleteContext(id){
+  if(!confirm('Move this context (and all its entries) to trash?'))return;
+  try{
+    await api(`/api/contexts/${encodeURIComponent(id)}`,{method:'DELETE'});
+    currentCtx=null;currentEntries=[];
+    await refresh();
+  }catch(e){alert('Delete failed: '+e.message)}
+}
+
+async function deleteEntry(id){
+  if(!confirm('Move this entry to trash?'))return;
+  try{
+    await api(`/api/entries/${encodeURIComponent(id)}`,{method:'DELETE'});
+    if(currentCtx)await selectCtx(currentCtx.id);
+    refresh();
+  }catch(e){alert('Delete failed: '+e.message)}
+}
+
+async function showTrash(){
+  try{
+    const res=await api('/api/trash');
+    const d=res.data||{contexts:[],entries:[]};
+    const ctxs=d.contexts||[],entries=d.entries||[];
+    let html='';
+    if(!ctxs.length&&!entries.length){
+      html='<div style="padding:24px;text-align:center;color:var(--text3)">Trash is empty</div>';
+    }
+    if(ctxs.length){
+      html+='<h4 style="color:var(--accent);margin:0 0 8px">Contexts</h4>';
+      html+=ctxs.map(c=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px">
+          <div style="min-width:0"><div style="font-size:13px;font-weight:500">${esc(c.title)}</div><div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${esc(c.id)}</div></div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-sm" onclick="restoreItem('context','${esc(c.id)}')">Restore</button>
+            <button class="btn btn-sm" style="color:var(--red)" onclick="purgeItem('context','${esc(c.id)}')">Delete Forever</button>
+          </div>
+        </div>`).join('');
+    }
+    if(entries.length){
+      html+='<h4 style="color:var(--accent);margin:12px 0 8px">Entries</h4>';
+      html+=entries.map(e=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px">
+          <div style="min-width:0"><div style="font-size:12px">${esc((e.content||'').slice(0,80))}</div><div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${esc(e.id)} · ${esc(e.date)}</div></div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-sm" onclick="restoreItem('entry','${esc(e.id)}')">Restore</button>
+            <button class="btn btn-sm" style="color:var(--red)" onclick="purgeItem('entry','${esc(e.id)}')">Delete Forever</button>
+          </div>
+        </div>`).join('');
+    }
+    document.getElementById('trashContent').innerHTML=html;
+    showModal('trashModal');
+  }catch(e){alert('Load trash failed: '+e.message)}
+}
+
+async function restoreItem(kind,id){
+  try{
+    await api(`/api/${kind==='context'?'contexts':'entries'}/${encodeURIComponent(id)}/restore`,{method:'POST'});
+    await showTrash();
+    await refresh();
+  }catch(e){alert('Restore failed: '+e.message)}
+}
+
+async function purgeItem(kind,id){
+  if(!confirm('Permanently delete? This CANNOT be undone.'))return;
+  try{
+    await api(`/api/${kind==='context'?'contexts':'entries'}/${encodeURIComponent(id)}/purge`,{method:'DELETE'});
+    await showTrash();
+    await refresh();
+  }catch(e){alert('Purge failed: '+e.message)}
 }
 
 function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}

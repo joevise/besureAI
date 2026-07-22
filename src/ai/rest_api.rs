@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, Json, Redirect},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -103,7 +103,13 @@ impl ApiServer {
             // 以下需要认证
             .route("/api/contexts", get(list_contexts))
             .route("/api/contexts", post(create_context))
-            .route("/api/contexts/:id", get(get_context))
+            .route("/api/contexts/:id", get(get_context).delete(soft_delete_context_api))
+            .route("/api/contexts/:id/restore", post(restore_context_api))
+            .route("/api/contexts/:id/purge", delete(purge_context_api))
+            .route("/api/entries/:id", delete(soft_delete_entry_api))
+            .route("/api/entries/:id/restore", post(restore_entry_api))
+            .route("/api/entries/:id/purge", delete(purge_entry_api))
+            .route("/api/trash", get(list_trash_api))
             .route("/api/contexts/:id/entries", post(add_entry))
             .route("/api/contexts/:id/log", get(get_log))
             .route("/api/search", get(search))
@@ -366,6 +372,91 @@ async fn create_context(
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     db.add_entry(&entry).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(ctx), error: None }))
+}
+
+// === Recycle Bin handlers ===
+
+async fn soft_delete_context_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
+    let vault = open_vault_from_headers(&headers, &state)?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    db.soft_delete_context(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
+}
+
+async fn soft_delete_entry_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
+    let vault = open_vault_from_headers(&headers, &state)?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    db.soft_delete_entry(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
+}
+
+async fn restore_context_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
+    let vault = open_vault_from_headers(&headers, &state)?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    db.restore_context(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
+}
+
+async fn restore_entry_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
+    let vault = open_vault_from_headers(&headers, &state)?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    db.restore_entry(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
+}
+
+async fn purge_context_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
+    let vault = open_vault_from_headers(&headers, &state)?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    db.hard_delete_context(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
+}
+
+async fn purge_entry_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, String)> {
+    let vault = open_vault_from_headers(&headers, &state)?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    db.hard_delete_entry(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
+}
+
+async fn list_trash_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, String)> {
+    let vault = open_vault_from_headers(&headers, &state)?;
+    let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (contexts, entries) = db.list_trash().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "contexts": contexts,
+            "entries": entries,
+        })),
+        error: None,
+    }))
 }
 
 async fn add_entry(

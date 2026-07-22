@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.59.0",
+    version = "0.60.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -226,6 +226,30 @@ enum Commands {
         all_vaults: bool,
     },
 
+    /// Soft-delete a context or entry (move to trash)
+    #[command(name = "delete")]
+    Delete {
+        /// What to delete: context or entry
+        kind: String,
+        id: String,
+    },
+
+    /// Restore a context or entry from trash
+    #[command(name = "restore")]
+    Restore {
+        id: String,
+    },
+
+    /// View trash contents
+    #[command(name = "trash")]
+    Trash,
+
+    /// Permanently delete a context or entry from trash (irreversible)
+    #[command(name = "purge")]
+    Purge {
+        id: String,
+    },
+
     /// Mark an entry as resolved
     #[command(name = "resolve")]
     Resolve {
@@ -374,6 +398,18 @@ fn main() -> anyhow::Result<()> {
                 last, from, to, entry_types, all, context, keyword, unresolved, resolved, limit,
             };
             cli::commands::cmd_query(&args)
+        }
+        Commands::Delete { kind, id } => {
+            cli::commands::cmd_delete(&kind, &id)
+        }
+        Commands::Restore { id } => {
+            cli::commands::cmd_restore(&id)
+        }
+        Commands::Trash => {
+            cli::commands::cmd_trash()
+        }
+        Commands::Purge { id } => {
+            cli::commands::cmd_purge(&id)
         }
         Commands::Resolve { entry_id } => {
             cli::commands::cmd_resolve(&entry_id)

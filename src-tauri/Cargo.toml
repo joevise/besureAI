@@ -1,6 +1,6 @@
 [package]
 name = "besure-app"
-version = "0.59.0"
+version = "0.60.0"
 description = "Besure AI Context — Desktop App"
 authors = ["刘正阳（大Joe）"]
 edition = "2021"

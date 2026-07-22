@@ -8,7 +8,7 @@
 
 **Rust-powered · Local-first · End-to-end encrypted · MCP-native · Single binary**
 
-**Current version: 0.59.0** — Emergent auto-tagging; Config concept removed (everything is an entry + auto tags).
+**Current version: 0.60.0** — Recycle Bin: soft delete contexts/entries to trash, restore or permanently purge.
 
 ---
 
@@ -103,6 +103,13 @@ besure query --all --keyword "auth"        # All contexts, keyword filter
 
 # Mark entry as resolved
 besure resolve <entry_id>
+
+# Recycle Bin (V0.60): soft delete → trash → restore / purge
+besure delete context <id>           # Move context (+ its entries) to trash
+besure delete entry <id>             # Move entry to trash
+besure trash                         # View trash contents
+besure restore <id>                  # Restore context or entry from trash
+besure purge <id>                    # Permanently delete (irreversible)
 
 # Export a context (encrypted .besure, default)
 besure export "My Project" --password *** -o backup.besure
@@ -286,6 +293,13 @@ besure link <id> --to <id>        Link entries (caused_by/supersedes/related_to)
 besure expire <id>                Mark entry as expired
 besure supersede <old> <new>      Mark old entry superseded by new
 besure recall                     Recall entries needing attention
+
+# === Recycle Bin (V0.60) ===
+besure delete context <id>        Move context (+ entries) to trash
+besure delete entry <id>          Move entry to trash
+besure trash                      View trash contents
+besure restore <id>               Restore context or entry from trash
+besure purge <id>                 Permanently delete (irreversible)
 
 # === Server ===
 besure serve [--port 7788]        Start web dashboard + REST API

@@ -62,7 +62,7 @@ impl McpServer {
                     },
                     "serverInfo": {
                         "name": "besure",
-                        "version": "0.59.0"
+                        "version": "0.60.0"
                     }
                 }
             }),
@@ -300,6 +300,24 @@ impl McpServer {
                 "inputSchema": {"type": "object", "properties": {}}
             }),
             json!({
+                "name": "besure_delete_entry",
+                "description": "把 entry 移入回收站（软删除，可恢复）",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"entry_id": {"type": "string", "description": "entry ID"}},
+                    "required": ["entry_id"]
+                }
+            }),
+            json!({
+                "name": "besure_restore_entry",
+                "description": "从回收站恢复 entry",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"entry_id": {"type": "string", "description": "entry ID"}},
+                    "required": ["entry_id"]
+                }
+            }),
+            json!({
                 "name": "besure_shared",
                 "description": "查看共享 vault 内容",
                 "inputSchema": {
@@ -341,6 +359,8 @@ impl McpServer {
             "besure_vaults" => Self::tool_vaults(&args),
             "besure_share" => Self::tool_share(&args),
             "besure_shared" => Self::tool_shared(&args),
+            "besure_delete_entry" => Self::tool_delete_entry(&args),
+            "besure_restore_entry" => Self::tool_restore_entry(&args),
             "besure_list_tags" => Self::tool_list_tags(&args),
             _ => Err(format!("unknown tool: {}", tool_name)),
         };
@@ -891,6 +911,30 @@ impl McpServer {
         shared_db.add_entry(&shared_entry).map_err(|e| e.to_string())?;
 
         Ok(format!("✓ Shared entry {} to shared vault", entry_id))
+    }
+
+    fn tool_delete_entry(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let entry_id = args.get("entry_id").and_then(|i| i.as_str()).ok_or("missing 'entry_id'")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        let entry = db.get_entry(entry_id).map_err(|e| e.to_string())?
+            .ok_or(format!("entry '{}' not found", entry_id))?;
+        db.soft_delete_entry(entry_id).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ Entry {} moved to trash (restore with besure_restore_entry)\n  content: {}", entry_id, &entry.content[..50.min(entry.content.len())]))
+    }
+
+    fn tool_restore_entry(args: &Value) -> Result<String, String> {
+        let vault = Self::get_vault()?;
+        let entry_id = args.get("entry_id").and_then(|i| i.as_str()).ok_or("missing 'entry_id'")?;
+
+        let db = vault.database().map_err(|e| e.to_string())?;
+        db.get_entry(entry_id).map_err(|e| e.to_string())?
+            .ok_or(format!("entry '{}' not found", entry_id))?;
+        db.restore_entry(entry_id).map_err(|e| e.to_string())?;
+
+        Ok(format!("✓ Entry {} restored from trash", entry_id))
     }
 
     fn tool_shared(args: &Value) -> Result<String, String> {
