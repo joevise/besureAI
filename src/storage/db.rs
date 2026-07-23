@@ -15,6 +15,8 @@ impl Database {
         let conn = Connection::open(path)
             .with_context(|| format!("failed to open database: {}", path.display()))?;
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+        conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+        conn.execute_batch("PRAGMA synchronous=NORMAL;")?;
         let db = Self { conn };
         db.init_schema()?;
         db.run_migrations()?;
@@ -269,9 +271,22 @@ impl Database {
         Ok(entries)
     }
 
-    /// List entries by status within a context
-    pub fn list_entries_by_status(&self, context_id: &str, status: &EntryStatus) -> Result<Vec<Entry>> {
+    /// List all non-deleted entries across all contexts
+    pub fn list_all_entries(&self) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare(
+            "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE deleted = 0 ORDER BY date DESC",
+        )?;
+
+        let entries = stmt
+            .query_map([], |row| self.row_to_entry(row))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(entries)
+    }
+
+    /// List entries by status within a context
+    pub fn list_entries_by_status(&self, context_id: &str, status: &EntryStatus) -> Result<Vec<Entry>> {        let mut stmt = self.conn.prepare(
             "SELECT id, context_id, date, entry_type, content, tags, links, valid_from, valid_until, status, superseded_by, resolved FROM entries WHERE context_id = ?1 AND status = ?2 AND deleted = 0 ORDER BY date DESC",
         )?;
 

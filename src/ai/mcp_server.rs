@@ -967,6 +967,14 @@ impl McpServer {
             .ok_or(format!("entry '{}' not found", entry_id))?;
         db.soft_delete_entry(entry_id).map_err(|e| e.to_string())?;
 
+        // 清理向量索引
+        let vec_db = vault.root.join("vectors.db");
+        if vec_db.exists() {
+            if let Ok(store) = crate::ai::vector::VectorStore::open(&vec_db) {
+                let _ = store.delete_by_entry(entry_id);
+            }
+        }
+
         Ok(format!("✓ Entry {} moved to trash (restore with besure_restore_entry)\n  content: {}", entry_id, &entry.content[..50.min(entry.content.len())]))
     }
 

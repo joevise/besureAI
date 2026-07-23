@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, Json, Redirect},
     routing::{delete, get, post},
@@ -130,6 +130,7 @@ impl ApiServer {
             .route("/api/vaults/:id/unlock", post(unlock_vault))
             .route("/api/vaults/:id/contexts/:ctxId/export", get(export_context_encrypted))
             .route("/api/vaults/:id/import", post(import_vault))
+            .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
             .with_state(Arc::new(state));
 
         let addr = format!("0.0.0.0:{}", self.port);
@@ -398,6 +399,12 @@ async fn soft_delete_entry_api(
     let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     db.soft_delete_entry(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vec_db_path = vault.root.join("vectors.db");
+    if vec_db_path.exists() {
+        if let Ok(store) = crate::ai::VectorStore::open(&vec_db_path) {
+            let _ = store.delete_by_entry(&id);
+        }
+    }
     Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
 }
 
@@ -442,6 +449,12 @@ async fn purge_entry_api(
     let vault = open_vault_from_headers(&headers, &state)?;
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     db.hard_delete_entry(&id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vec_db_path = vault.root.join("vectors.db");
+    if vec_db_path.exists() {
+        if let Ok(store) = crate::ai::VectorStore::open(&vec_db_path) {
+            let _ = store.delete_by_entry(&id);
+        }
+    }
     Ok(Json(ApiResponse { ok: true, data: Some(()), error: None }))
 }
 
@@ -521,9 +534,6 @@ async fn get_log(
 /// 语义搜索：embed query → vectors.db 余弦相似度 → 关联 entry/context
 fn semantic_search_vault(vault: &Vault, q: &str) -> Result<Vec<serde_json::Value>, (StatusCode, String)> {
     let vec_db_path = vault.root.join("vectors.db");
-    if !vec_db_path.exists() {
-        return Err((StatusCode::BAD_REQUEST, "No vectors indexed yet. Run 'besure index --all' first.".to_string()));
-    }
     // 从当前 vault 目录读 appconfig（不依赖全局 BESURE_VAULT 环境变量）
     let cfg_path = vault.root.join("appconfig.json");
     let emb_config = std::fs::read_to_string(&cfg_path)
@@ -532,6 +542,23 @@ fn semantic_search_vault(vault: &Vault, q: &str) -> Result<Vec<serde_json::Value
         .and_then(|v| v.get("embedding").cloned())
         .and_then(|e| serde_json::from_value::<crate::ai::embedding::EmbeddingConfig>(e).ok())
         .unwrap_or_default();
+    if !vec_db_path.exists() {
+        // 自动建索引（首次语义搜索会变慢几秒，但比报错好）
+        eprintln!("[info] vectors.db not found, building index automatically...");
+        let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let entries = db.list_all_entries().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if !entries.is_empty() {
+            let store = crate::ai::VectorStore::open(&vec_db_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let provider = crate::ai::EmbeddingProvider::new(emb_config.clone());
+            for entry in &entries {
+                if !store.has_entry(&entry.id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))? {
+                    let vec = provider.embed(&entry.content).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    store.upsert_embedding(&entry.id, &entry.context_id, Some(&entry.id), &entry.content, &vec)
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                }
+            }
+        }
+    }
     let provider = crate::ai::EmbeddingProvider::new(emb_config);
     let query_vec = provider.embed(q).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let store = crate::ai::VectorStore::open(&vec_db_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

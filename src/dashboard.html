@@ -480,6 +480,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 </div>
 
 <script>
+function esc(s){
+  const d=document.createElement('div');
+  d.textContent=s;
+  return d.innerHTML;
+}
 let SESSION_TOKEN=sessionStorage.getItem('besure_session')||null;
 let currentCtx=null,contexts=[];
 let currentEntries=[];
@@ -1145,7 +1150,7 @@ async function loadStats(){
     }
     html+='</div>';
     document.getElementById('statsContent').innerHTML=html;
-  }catch(e){document.getElementById('statsContent').innerHTML='<p>Error: '+e.message+'</p>'}
+  }catch(e){document.getElementById('statsContent').innerHTML='<p>Error: '+esc(e.message)+'</p>'}
 }
 
 // === Recycle Bin ===

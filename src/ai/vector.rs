@@ -11,6 +11,7 @@ impl VectorStore {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)
             .with_context(|| format!("failed to open vector db: {}", path.display()))?;
+        conn.execute_batch("PRAGMA busy_timeout=5000;")?;
         let store = Self { conn };
         store.init_schema()?;
         Ok(store)
@@ -19,6 +20,7 @@ impl VectorStore {
     #[cfg(test)]
     pub fn open_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
+        conn.execute_batch("PRAGMA busy_timeout=5000;")?;
         let store = Self { conn };
         store.init_schema()?;
         Ok(store)

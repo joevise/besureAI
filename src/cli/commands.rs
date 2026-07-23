@@ -711,7 +711,22 @@ fn do_semantic_search(query: &str) -> Result<()> {
 
     let vec_db_path = vault.root.join("vectors.db");
     if !vec_db_path.exists() {
-        bail!("No vectors indexed yet. Run 'besure index --all' to build the index.");
+        eprintln!("[info] vectors.db not found, building index automatically (first run may take a few seconds)...");
+        let db = vault.database()?;
+        let entries = db.list_all_entries()?;
+        if !entries.is_empty() {
+            let store = VectorStore::open(&vec_db_path)?;
+            for entry in &entries {
+                if !store.has_entry(&entry.id)? {
+                    match provider.embed(&entry.content) {
+                        Ok(vec) => {
+                            store.upsert_embedding(&entry.id, &entry.context_id, Some(&entry.id), &entry.content, &vec)?;
+                        }
+                        Err(e) => eprintln!("[warn] skip {} (embed failed: {})", entry.id, e),
+                    }
+                }
+            }
+        }
     }
 
     let store = VectorStore::open(&vec_db_path)?;
@@ -1063,6 +1078,12 @@ pub fn cmd_delete(kind: &str, id: &str) -> Result<()> {
         "entry" => {
             let entry = db.get_entry(id)?.context("entry not found")?;
             db.soft_delete_entry(&entry.id)?;
+            let vec_db_path = vault.root.join("vectors.db");
+            if vec_db_path.exists() {
+                if let Ok(store) = VectorStore::open(&vec_db_path) {
+                    let _ = store.delete_by_entry(&entry.id);
+                }
+            }
             println!("✓ Entry {} moved to trash", entry.id);
             println!("  content: {}", truncate(&entry.content, 60));
             println!("  Restore with: besure restore {}", entry.id);
@@ -1134,6 +1155,12 @@ pub fn cmd_purge(id: &str) -> Result<()> {
     }
     if let Some(entry) = db.get_entry(id)? {
         db.hard_delete_entry(&entry.id)?;
+        let vec_db_path = vault.root.join("vectors.db");
+        if vec_db_path.exists() {
+            if let Ok(store) = VectorStore::open(&vec_db_path) {
+                let _ = store.delete_by_entry(&entry.id);
+            }
+        }
         println!("✓ Entry {} permanently deleted", entry.id);
         return Ok(());
     }
@@ -1447,7 +1474,7 @@ fn load_config() -> Result<AppConfig> {
 
 fn save_config(config: &AppConfig) -> Result<()> {
     let path = Vault::default_root().join("appconfig.json");
-    std::fs::create_dir_all(path.parent().unwrap())?;
+    std::fs::create_dir_all(path.parent().ok_or_else(|| anyhow::anyhow!("Invalid path"))?)?;
     let json = serde_json::to_string_pretty(config)?;
     std::fs::write(&path, json)?;
     Ok(())
