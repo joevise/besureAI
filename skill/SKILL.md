@@ -1,325 +1,114 @@
-# Besure AI Skill — 闭环记忆系统
+---
+name: besure
+version: 1.0.0
+description: "AI 闭环记忆系统：自动记录决策、进展、教训，语义搜索历史记忆，跨会话上下文保持。完成任务、做出决策、发现问题或结束会话时必须调用。"
+metadata:
+  requires:
+    bins: ["besure"]
+  cliHelp: "besure --help"
+---
 
-## 🚨 MANDATORY RECORDING RULES V0.3 (NO EXCEPTIONS)
+# Besure AI Context — 闭环记忆系统
+
+## 🚨 MANDATORY RECORDING RULES (NO EXCEPTIONS)
 
 **These rules are MANDATORY. You MUST follow them without being asked.**
-
-> **Iron Rules V0.3** — Added Anti-cross-contamination rule: always use `--context <id>` with `besure add` to prevent data corruption.
-> V0.2: Behavioral Anchors (git push → add, deploy → add)
-> V0.1: Basic rules (5 mandatory recording scenarios)
 
 ### When to Record (execute `besure add` immediately):
 
 1. **After completing any task/feature/fix** → `besure add --type milestone`
 2. **After any decision is made** → `besure add --type decision`
 3. **After discovering a problem/lesson** → `besure add --type lesson`
-4. **When user says goodbye / session ending** → `besure add --type progress` (summary)
+4. **When user says goodbye / session ending** → `besure add --type progress`
 5. **Every 30 minutes of active work** → `besure add --type progress`
 
-### Test yourself:
-> "If this session ended right now, would I lose important context?"
+> **Test yourself:** "If this session ended right now, would I lose important context?"
 > If YES → you must `besure add` NOW.
-> When in doubt, RECORD. Over-recording is cheap. Lost memory is expensive.
 
-### Behavioral Anchors (CRITICAL — bind recording to specific actions):
+### Behavioral Anchors (bind recording to specific actions):
 
-Tie `besure add` to these concrete trigger points — NOT to abstract "task completion":
+1. **After every `git commit && git push`** → `besure add` IMMEDIATELY
+2. **After every deployment** → `besure add`
+3. **After every user request is fully answered** → `besure add` before next message
+4. **After every bug fix** → `besure add --type lesson`
 
-1. **After every `git commit && git push`** → `besure add` IMMEDIATELY (before doing anything else)
-2. **After every deployment** (copy binary, restart service, curl test) → `besure add`
-3. **After every user request is fully answered** → `besure add` before waiting for next message
-4. **After every bug fix** → `besure add --type lesson` (what was the bug, root cause, fix)
-
-**⚠️ Anti-cross-contamination (CRITICAL):** Always pass `--context <id>` to `besure add`:
+**⚠️ Always pass `--context <id>` to prevent cross-contamination:**
 ```bash
 besure add "content" --type milestone --context ctx_xxx  # ✅ explicit
-besure add "content" --type milestone                    # ❌ uses global state
+besure add "content" --type milestone                    # ❌ global state
 ```
-Never rely on "current context" — it's global mutable state that causes data corruption when you forget to switch back.
-
-The danger zone is the "flow state" — when you're coding/debugging, you forget to record.
-The fix: record AS PART OF the commit/deploy workflow, not as a separate "I'll do it later" step.
 
 ### FORBIDDEN:
-- ❌ "I'll remember this for later" → You won't. WRITE IT.
-- ❌ "This is too small to record" → Record it anyway.
-- ❌ "I'll batch-record at the end" → Record NOW.
-- ❌ "I'm in the middle of something, I'll record after the next step" → Record NOW, then continue.
+- ❌ "I'll remember this" → WRITE IT.
+- ❌ "Too small to record" → Record anyway.
+- ❌ "I'll batch-record later" → Record NOW.
 
 ---
 
-## Description
-多上下文记忆管理。切换/记录/搜索/关联/召回。基于闭环逻辑设计：8 维度（主体/编码/完整性/上下文/检索/关联/时效/失效）。通过 CLI 调用本地 besure 二进制。
-
-## When to Use
-- 用户说"切换到XX项目" / "记一下XX" / "搜一下之前XX的记录"
-- 需要跨任务/项目隔离上下文信息
-- 需要记录进展、决策、阻碍、笔记、教训
-- 对话中需要搜索历史记录
-- 需要关联记忆（因果/替代/引用）
-- 需要标记过期/被替代的决策
-- 需要主动召回近期需要注意的记忆
-- Session 结束前需要保存上下文
-- **完成任何任务后必须记录**（强制）
-- **做了决策后必须记录**（强制）
-
-## How to Use
-
-所有操作通过 `exec` 调用 `besure` CLI 完成。每次调用前确保 PATH 包含 besure：
-```bash
-export PATH="$HOME/.hermes/node/bin:$PATH"
-```
-
-### 基础操作
+## Quick Start
 
 ```bash
-# 列出所有上下文
-besure list
+# 初始化（仅首次）
+besure init                     # 创建 vault
+besure unlock                   # 解锁（输入密码）
 
-# 创建新上下文
-besure create "项目名" --tag 标签1 --summary "摘要"
-
-# 切换上下文（支持模糊匹配）
-besure switch "关键词"
-
-# 查看状态
-besure status
-
-# 解锁/锁定
-besure unlock    # 输入主密码
-besure lock
-```
-
-### 记录管理
-
-```bash
-# 添加进展记录（快速模式）
-besure add "一句话内容" --type progress
-# 类型：init/milestone/decision/progress/blocker/note/lesson/question
-
-# 添加多段落 Markdown 记录（生产级颗粒度）
-besure add --from-file entry.md --type decision
-
-# 查看时间线
-besure log
-besure log "项目关键词"
-
-# 全文搜索
+# 日常使用
+besure add "内容" --type milestone --context ctx_xxx
 besure search "关键词"
+besure search "语义描述" --semantic    # AI 语义搜索
+besure log                       # 当前 context 时间线
+besure recall                    # 召回即将过期/重要的记忆
 
-# 语义搜索（V0.61+ 本地 fastembed bge-small-zh，完全离线、零成本、零 key）
-besure search "意思相近的描述" --semantic
-besure index --all          # 给存量 entry 补建向量索引（add 时自动增量索引）
+# Context 管理
+besure list                      # 列出所有 context
+besure switch "项目名"            # 切换 context
+besure create "新项目"            # 创建新 context
 
-# 导出上下文（默认加密 .besure，AES-256-GCM，只有 besure import + 密码能还原）
-besure export "项目名" --password *** -o backup.besure
-besure export "项目名" -o backup.besure          # 交互式输入密码
-
-# 旧版 Markdown 导出（明文，无 tags/links/status 保证）
-besure export "项目名" --format md -o output.md
-
-# 导入加密 .besure 文件（context 已存在时 entry 按 id 去重，跳过已存在）
-besure import backup.besure --password ***
+# 索引（语义搜索前需要建索引）
+besure index --all               # 给存量数据建向量索引
 ```
 
-### V3 闭环功能
+## 命令参考
 
+| 命令 | 说明 |
+|------|------|
+| `besure add "text" --type T --context C` | 添加记忆（type: milestone/decision/lesson/progress/note/question/blocker） |
+| `besure search "query"` | 全文搜索 |
+| `besure search "query" --semantic` | 语义搜索（本地 AI，离线） |
+| `besure list` | 列出所有 context |
+| `besure switch "keyword"` | 切换 context（模糊匹配） |
+| `besure create "name"` | 创建新 context |
+| `besure log` | 当前 context 时间线 |
+| `besure query --last 7d` | 查询最近 7 天 |
+| `besure query --type decision` | 只看决策 |
+| `besure query --all` | 跨所有 context 查询 |
+| `besure recall` | 主动召回（即将过期/最近/被替代） |
+| `besure stats` | 统计概览 |
+| `besure tags` | 标签列表 |
+| `besure resolve <id>` | 标记完成 |
+| `besure append <id> "补充"` | 追加内容 |
+| `besure link <id> --to <id> --as related_to` | 关联记忆 |
+| `besure delete entry <id>` | 删除（入回收站） |
+| `besure restore <id>` | 从回收站恢复 |
+| `besure export --password ***` | 加密导出 |
+| `besure import backup.besure --password ***` | 加密导入 |
+| `besure index --all` | 建立向量索引 |
+| `besure --version` | 版本号 |
+
+## Auto-tagging
+
+`besure add` 会自动用 LLM 打 1-3 个标签。配置：
 ```bash
-# === F 关联 ===
-# 给 entry 建立关联
-besure link <entry_id> --to <target_id> --as <relation>
-# relation: caused_by / supersedes / related_to / ref_file / ref_commit / ref_url
-
-# === H 失效 ===
-# 标记 entry 过期
-besure expire <entry_id>
-
-# 标记旧 entry 被新 entry 替代
-besure supersede <old_entry_id> <new_entry_id>
-
-# === G 时效 / E 主动召回 ===
-# 查看需要注意的记忆（即将过期/已过期/最近/被替代）
-besure recall
+besure appconfig llm.provider openrouter
+besure appconfig llm.api_url https://openrouter.ai/api/v1/chat/completions
+besure appconfig llm.api_key sk-or-你的KEY
+besure appconfig llm.model deepseek/deepseek-v4-flash
 ```
 
-### V0.4 查询 & 管理功能
+## Semantic Search
 
-```bash
-# === 统一查询（Agent 友好的紧凑输出）===
-# 默认：当前上下文最近 20 条
-besure query
-# 时间过滤
-besure query --last 7d              # 最近 7 天
-besure query --from 2026-07-01 --to 2026-07-18
-# 类型过滤（可重复 --type）
-besure query --type decision --type milestone
-# 跨上下文
-besure query --all
-besure query --context "besure"
-# 关键词 + resolved 过滤
-besure query --keyword "V3" --unresolved
-# 组合
-besure query --all --last 7d --type milestone
+- 默认全文匹配；`--semantic` 走本地 fastembed（bge-small-zh-v1.5，512维，完全离线）
+- 首次使用自动下载模型（~100MB）
+- 中文长文本效果最好；英文/专有名词用关键词搜索
 
-# === 标记完成 ===
-besure resolve <entry_id>
-
-# === 追加内容 ===
-besure append <entry_id> "补充内容"
-besure append <entry_id> --from-file supplement.md
-
-# === 统计概览 ===
-besure stats
-```
-
-### V0.60 回收站
-
-删除不是物理删除——先移入回收站，可恢复；回收站里再 purge 才是真删除：
-
-```bash
-# === 软删除（移入回收站）===
-besure delete context <id>   # context 及其 entries 一起移入
-besure delete entry <id>     # 单个 entry 移入
-
-# === 查看回收站 ===
-besure trash
-
-# === 恢复（自动识别 context 还是 entry）===
-besure restore <id>
-
-# === 永久删除（不可恢复，慎用）===
-besure purge <id>
-```
-
-注意：正常列表/搜索/统计均不包含回收站内容。
-
-### V0.5 多 Vault 架构
-
-每个 Agent 默认有自己的 vault（物理隔离），通过环境变量配置：
-```bash
-# 环境变量
-BESURE_VAULT=~/.besure/joey/          # 当前 Agent 的 vault
-BESURE_VAULTS_ALL=true                 # 全局视角（只给主 Agent）
-BESURE_VAULT_ROOT=~/.besure/           # vault 父目录（扫描用）
-BESURE_SHARED_VAULT=~/.besure/shared/   # 共享 vault 路径
-```
-
-```bash
-# 列出所有 vault（需全局视角）
-besure vaults
-
-# 跨 vault 查询
-besure query --all-vaults
-
-# 推送到共享空间
-besure share <entry_id>
-besure share-context <context_id>
-
-# 查看共享内容
-besure shared
-besure shared --keyword "BTC"
-```
-
-### V0.58 自动标签（Emergent Tagging）
-
-`besure add` 时自动调用 LLM 给 entry 打 1-3 个扁平大类中文标签（如 `后端开发`、`部署`、`家庭`、`投资`），同步写入 `entry.tags`：
-
-```bash
-# add 时自动打标（输出带 🏷 标签）
-besure add "完成了后端 API 部署" --context ctx_xxx
-# → ✓ Added progress entry to ctx_xxx  🏷 后端开发, 部署
-
-# 查看标签库（tag + 使用次数，降序）
-besure tags
-
-# 给存量 entry 补标签
-besure retag                    # 当前 context
-besure retag --context ctx_xxx  # 指定 context
-besure retag --all              # 全库
-```
-
-要点：
-- 标签库存 `tag_vocab` 表：新标签先匹配已有库，语义相同复用（避免"前端"/"frontend"同义词爆炸），没有才新建
-- LLM 不可用（provider=dummy / 无 api_url / 请求失败）时**降级跳过打标**，绝不阻塞 add
-- 打标复用 `~/.besure/appconfig.json` 的 `llm` 配置（同 absorb），key 为 `llm.provider` / `llm.api_url` / `llm.api_key` / `llm.model`，用 `besure appconfig <key> <value>` 设置
-- **推荐配置**：OpenRouter + DeepSeek V4 Flash（便宜快）。用户需到 https://openrouter.ai/keys 拿自己的 key：
-  ```bash
-  besure appconfig llm.provider openrouter
-  besure appconfig llm.api_url https://openrouter.ai/api/v1/chat/completions
-  besure appconfig llm.api_key sk-or-v1-你自己的KEY
-  besure appconfig llm.model deepseek/deepseek-v4-flash
-  ```
-- **没有 config 命令**：V0.58 起砍掉 context 级 `besure config set/get/list`。以前当配置存的内容直接 `besure add`，靠自动标签检索
-- Dashboard 每条 entry 显示标签，可按标签筛选（前端过滤）
-- REST `GET /api/tags` 返回标签库
-
-### V0.59 加密导出/导入（.besure 格式）
-
-```bash
-# 导出为自有加密格式（不是 zip，任何压缩工具打不开）
-besure export "项目名" -o backup.besure
-# 文件头：BESURE1 + VERSION(0x01) + SALT(16B) + NONCE(12B)，其余为 AES-256-GCM(JSON) 密文
-# entry 全字段导出：tags/links/status/resolved/valid_until/superseded_by
-
-# 导入（密码错误会明确报错；已存在的 entry id 自动跳过）
-besure import backup.besure
-```
-
-要点：
-- 每次导出随机生成 salt + nonce，同内容两次导出文件不同
-- Dashboard：Export 按钮弹密码框下载 .besure；侧栏 ⇪ 按钮上传导入
-
-### 生产级记录格式（推荐）
-
-对重要决策和里程碑，使用 `--from-file` 写多段落 Markdown：
-
-```markdown
-## 决策/事件标题
-
-### 做了什么
-具体行动描述。
-
-### 为什么
-决策理由、权衡逻辑。
-
-### 踩坑
-遇到的问题和解法。
-
-### 关联
-- commit: abc123
-- 文件: src/xxx.rs
-- 决策人: 大Joe
-```
-
-### 使用流程
-
-1. **Session 开始时**：
-   - `besure unlock`（如加密）
-   - `besure switch "当前项目"`
-   - `besure recall`（查看需要注意的记忆）
-
-2. **对话过程中**：
-   - `besure add "快速记录"` 或 `besure add --from-file entry.md`
-   - `besure link <id> --to <id>`（建立关联）
-
-3. **Session 结束前**：
-   - 重要决策/进展 → `besure add --from-file`
-   - `besure lock`（如加密）
-
-### 从对话提取进展
-
-```bash
-echo "对话内容..." | besure absorb --auto
-```
-
-### 注意事项
-
-- 每次调用 besure 都是独立进程
-- 加密模式下必须先 unlock 才能操作
-- search 默认全文匹配；--semantic 走本地 fastembed 语义向量（离线，首次使用下载模型 ~100MB 到 ~/.cache）；存量数据先 `besure index --all` 补建索引
-- V3 新字段（links/status/valid_until/superseded_by/resolved）向下兼容，旧 entry 不受影响
-- V0.4 query 默认返回 20 条，紧凑格式（对 Agent 友好）
-- V0.4 resolve 标记完成，append 追加内容（加分隔线+时间戳）
-- DB migration 幂等，多次运行安全
-- Dashboard 支持 filter bar、resolved 徽章、append 输入框、Stats Tab、Tags Tab、标签筛选
-- V0.58 自动标签：add 时 LLM 同步打标（1-3 个大类），tag_vocab 复用防同义词；LLM 不可用自动降级
+完整命令参考：[`references/commands.md`](references/commands.md)

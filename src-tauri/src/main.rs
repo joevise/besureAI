@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use tauri::Manager;
+
 mod server;
 mod tray;
 
@@ -85,6 +87,41 @@ fn main() {
     tauri::Builder::default()
         .setup(move |app| {
             tray::setup_tray(app)?;
+
+            // 部署 CLI binary：bundle Resources/besure → ~/Library/Application Support/Besure/bin/besure
+            if let Ok(resource) = app
+                .path()
+                .resolve("besure", tauri::path::BaseDirectory::Resource)
+            {
+                if resource.exists() {
+                    let target = app_data_dir().join("bin").join("besure");
+                    let deployed = (|| -> std::io::Result<()> {
+                        if let Some(parent) = target.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        std::fs::copy(&resource, &target)?;
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            std::fs::set_permissions(
+                                &target,
+                                std::fs::Permissions::from_mode(0o755),
+                            )?;
+                        }
+                        Ok(())
+                    })();
+                    match deployed {
+                        Ok(_) => println!("✅ CLI binary deployed to {}", target.display()),
+                        Err(e) => eprintln!("⚠️  failed to deploy CLI binary: {}", e),
+                    }
+                } else {
+                    eprintln!(
+                        "⚠️  CLI binary not found in bundle resources: {}",
+                        resource.display()
+                    );
+                }
+            }
+
             tauri::WebviewWindowBuilder::new(
                 app,
                 "main",

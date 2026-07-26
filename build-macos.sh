@@ -62,6 +62,17 @@ echo ""
 APP_PATH=$(find target/release/bundle/macos -name "*.app" 2>/dev/null | head -1)
 DMG_PATH=$(find target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
 
+# 把 CLI binary 打进 App bundle Resources（App 启动时会部署到数据目录）
+if [ -n "$APP_PATH" ]; then
+  if [ -f ../target/release/besure ]; then
+    cp ../target/release/besure "$APP_PATH/Contents/Resources/besure"
+    chmod +x "$APP_PATH/Contents/Resources/besure"
+    echo "✅ CLI binary 已打包：$APP_PATH/Contents/Resources/besure"
+  else
+    echo "⚠️  未找到 ../target/release/besure，App 将无法部署 CLI"
+  fi
+fi
+
 if [ -n "$APP_PATH" ]; then
   echo "📱 App：$APP_PATH"
 fi

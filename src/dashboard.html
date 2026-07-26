@@ -407,11 +407,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
       <div style="font-size:12px;color:var(--text3);margin-top:6px">语义搜索对中文长文本效果最好；英文/专有名词建议用关键词搜索</div>
     </div>
     <div class="ctx-list" id="ctxList"></div>
-    <div class="sidebar-footer">
-      <button class="btn btn-primary" onclick="showCreateModal()" style="flex:1">+ New Context</button>
-      <button class="btn" onclick="showTrash()" title="Trash">🗑</button>
-      <button class="btn" onclick="showImportModal()" title="Import .besure">⇪</button>
-      <button class="btn" onclick="refresh()">↻</button>
+    <div class="sidebar-footer" style="flex-direction:column">
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="showCreateModal()" style="flex:1">+ New Context</button>
+        <button class="btn" onclick="showTrash()" title="Trash">🗑</button>
+        <button class="btn" onclick="showImportModal()" title="Import .besure">⇪</button>
+        <button class="btn" onclick="refresh()">↻</button>
+      </div>
+      <button class="btn" onclick="showSkillModal()" style="width:100%">📦 获取 Skill</button>
     </div>
   </div>
 
@@ -472,6 +475,30 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
     <h3>🗑 Trash</h3>
     <div id="trashContent" style="max-height:60vh;overflow-y:auto"></div>
     <div class="modal-actions"><button class="btn" onclick="hideModal('trashModal')">Close</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="skillModal">
+  <div class="modal" style="width:560px">
+    <h3>📦 获取 Besure Skill</h3>
+    <div class="modal-field">
+      <label>一键安装命令（复制到终端执行）</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="skillInstallCmd" readonly style="flex:1;font-family:var(--mono);font-size:12px">
+        <button class="btn" onclick="copySkillCmd()">复制</button>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label>手动安装步骤</label>
+      <ol style="font-size:13px;color:var(--text2);line-height:1.9;padding-left:20px;margin:0">
+        <li>打开终端，粘贴上面的命令并回车</li>
+        <li>脚本会把 Skill 安装到 <code style="font-family:var(--mono)">~/.agents/skills/besure/</code></li>
+        <li>同时在 <code style="font-family:var(--mono)">~/.local/bin/besure</code> 创建 CLI 软链</li>
+        <li>如果提示 PATH 缺失，把 <code style="font-family:var(--mono)">export PATH="$HOME/.local/bin:$PATH"</code> 加到你的 shell 配置</li>
+        <li>重启你的 Agent（Codex / Cursor / Windsurf）即可使用</li>
+      </ol>
+    </div>
+    <div class="modal-actions"><button class="btn btn-primary" onclick="hideModal('skillModal')">完成</button></div>
   </div>
 </div>
 
@@ -1027,6 +1054,17 @@ function exitSearchMode(restore){
 
 // === Modals ===
 function showCreateModal(){showModal('createModal')}
+
+function showSkillModal(){
+  const port=window.location.port;
+  document.getElementById('skillInstallCmd').value=`bash <(curl -sSL http://localhost:${port}/api/skill/install.sh)`;
+  showModal('skillModal');
+}
+function copySkillCmd(){
+  const el=document.getElementById('skillInstallCmd');
+  el.select();
+  navigator.clipboard.writeText(el.value);
+}
 function showEntryModal(){if(!currentCtx){alert('Select a context first');return}showModal('entryModal')}
 function showModal(id){document.getElementById(id).classList.add('show')}
 function hideModal(id){document.getElementById(id).classList.remove('show')}
