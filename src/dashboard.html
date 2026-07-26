@@ -479,26 +479,27 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 </div>
 
 <div class="modal-overlay" id="skillModal">
-  <div class="modal" style="width:560px">
+  <div class="modal" style="width:640px">
     <h3>📦 获取 Besure Skill</h3>
-    <div class="modal-field">
-      <label>一键安装命令（复制到终端执行）</label>
-      <div style="display:flex;gap:8px">
-        <input type="text" id="skillInstallCmd" readonly style="flex:1;font-family:var(--mono);font-size:12px">
-        <button class="btn" onclick="copySkillCmd()">复制</button>
+    <div id="skillToolList">
+      <div class="modal-field"><label>选择你的 AI 工具</label></div>
+      <div id="skillToolGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
+    </div>
+    <div id="skillToolDetail" style="display:none">
+      <div class="modal-field">
+        <label id="skillToolName"></label>
+        <pre id="skillContent" style="max-height:45vh;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:var(--mono);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;margin:0"></pre>
+      </div>
+      <div class="modal-field">
+        <label>安装路径</label>
+        <div id="skillInstallPath" style="font-family:var(--mono);font-size:12px;color:var(--text2)"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="showSkillToolList()">← 返回</button>
+        <button class="btn btn-primary" onclick="copySkillContent()">复制内容</button>
       </div>
     </div>
-    <div class="modal-field">
-      <label>手动安装步骤</label>
-      <ol style="font-size:13px;color:var(--text2);line-height:1.9;padding-left:20px;margin:0">
-        <li>打开终端，粘贴上面的命令并回车</li>
-        <li>脚本会把 Skill 安装到 <code style="font-family:var(--mono)">~/.agents/skills/besure/</code></li>
-        <li>同时在 <code style="font-family:var(--mono)">~/.local/bin/besure</code> 创建 CLI 软链</li>
-        <li>如果提示 PATH 缺失，把 <code style="font-family:var(--mono)">export PATH="$HOME/.local/bin:$PATH"</code> 加到你的 shell 配置</li>
-        <li>重启你的 Agent（Codex / Cursor / Windsurf）即可使用</li>
-      </ol>
-    </div>
-    <div class="modal-actions"><button class="btn btn-primary" onclick="hideModal('skillModal')">完成</button></div>
+    <div class="modal-actions" id="skillModalClose"><button class="btn btn-primary" onclick="hideModal('skillModal')">完成</button></div>
   </div>
 </div>
 
@@ -1055,15 +1056,156 @@ function exitSearchMode(restore){
 // === Modals ===
 function showCreateModal(){showModal('createModal')}
 
+const SKILL_CORE=`# Besure AI Context — 闭环记忆系统
+
+## 🚨 MANDATORY RECORDING RULES (NO EXCEPTIONS)
+
+**These rules are MANDATORY. You MUST follow them without being asked.**
+
+### When to Record (execute \`besure add\` immediately):
+
+1. **After completing any task/feature/fix** → \`besure add --type milestone\`
+2. **After any decision is made** → \`besure add --type decision\`
+3. **After discovering a problem/lesson** → \`besure add --type lesson\`
+4. **When user says goodbye / session ending** → \`besure add --type progress\`
+5. **Every 30 minutes of active work** → \`besure add --type progress\`
+
+> **Test yourself:** "If this session ended right now, would I lose important context?"
+> If YES → you must \`besure add\` NOW.
+
+### Behavioral Anchors (bind recording to specific actions):
+
+1. **After every \`git commit && git push\`** → \`besure add\` IMMEDIATELY
+2. **After every deployment** → \`besure add\`
+3. **After every user request is fully answered** → \`besure add\` before next message
+4. **After every bug fix** → \`besure add --type lesson\`
+
+**⚠️ Always pass \`--context <id>\` to prevent cross-contamination:**
+\`\`\`bash
+besure add "content" --type milestone --context ctx_xxx  # ✅ explicit
+besure add "content" --type milestone                    # ❌ global state
+\`\`\`
+
+### FORBIDDEN:
+- ❌ "I'll remember this" → WRITE IT.
+- ❌ "Too small to record" → Record anyway.
+- ❌ "I'll batch-record later" → Record NOW.
+
+---
+
+## Quick Start
+
+\`\`\`bash
+# 初始化（仅首次）
+besure init                     # 创建 vault
+besure unlock                   # 解锁（输入密码）
+
+# 日常使用
+besure add "内容" --type milestone --context ctx_xxx
+besure search "关键词"
+besure search "语义描述" --semantic    # AI 语义搜索
+besure log                       # 当前 context 时间线
+besure recall                    # 召回即将过期/重要的记忆
+
+# Context 管理
+besure list                      # 列出所有 context
+besure switch "项目名"            # 切换 context
+besure create "新项目"            # 创建新 context
+
+# 索引（语义搜索前需要建索引）
+besure index --all               # 给存量数据建向量索引
+\`\`\`
+
+## 命令参考
+
+| 命令 | 说明 |
+|------|------|
+| \`besure add "text" --type T --context C\` | 添加记忆（type: milestone/decision/lesson/progress/note/question/blocker） |
+| \`besure search "query"\` | 全文搜索 |
+| \`besure search "query" --semantic\` | 语义搜索（本地 AI，离线） |
+| \`besure list\` | 列出所有 context |
+| \`besure switch "keyword"\` | 切换 context（模糊匹配） |
+| \`besure create "name"\` | 创建新 context |
+| \`besure log\` | 当前 context 时间线 |
+| \`besure query --last 7d\` | 查询最近 7 天 |
+| \`besure query --type decision\` | 只看决策 |
+| \`besure query --all\` | 跨所有 context 查询 |
+| \`besure recall\` | 主动召回（即将过期/最近/被替代） |
+| \`besure stats\` | 统计概览 |
+| \`besure tags\` | 标签列表 |
+| \`besure resolve <id>\` | 标记完成 |
+| \`besure append <id> "补充"\` | 追加内容 |
+| \`besure link <id> --to <id> --as related_to\` | 关联记忆 |
+| \`besure delete entry <id>\` | 删除（入回收站） |
+| \`besure restore <id>\` | 从回收站恢复 |
+| \`besure export --password ***\` | 加密导出 |
+| \`besure import backup.besure --password ***\` | 加密导入 |
+| \`besure index --all\` | 建立向量索引 |
+| \`besure --version\` | 版本号 |
+`;
+
+const SKILL_YAML=`---
+name: besure
+version: 1.0.0
+description: "AI 闭环记忆系统：自动记录决策、进展、教训，语义搜索历史记忆，跨会话上下文保持。完成任务、做出决策、发现问题或结束会话时必须调用。"
+metadata:
+  requires:
+    bins: ["besure"]
+  cliHelp: "besure --help"
+---
+
+`;
+
+const SKILL_CURSOR_FM=`---
+description: Besure AI 闭环记忆系统
+alwaysApply: true
+---
+
+`;
+
+const SKILL_TOOLS=[
+  {id:'cursor',   name:'Cursor',         path:'~/.cursor/rules/besure.mdc',                                          content:()=>SKILL_CURSOR_FM+SKILL_CORE},
+  {id:'codex',    name:'Codex',          path:'~/.codex/AGENTS.md（追加）',                                          content:()=>SKILL_CORE},
+  {id:'openclaw', name:'OpenClaw',       path:'~/.agents/skills/besure/SKILL.md',                                    content:()=>SKILL_YAML+SKILL_CORE},
+  {id:'windsurf', name:'Windsurf',       path:'项目根目录 .windsurfrules',                                           content:()=>SKILL_CORE},
+  {id:'claude',   name:'Claude Code',    path:'~/.claude/CLAUDE.md（追加）',                                         content:()=>SKILL_CORE},
+  {id:'cline',    name:'Cline',          path:'项目根目录 .clinerules',                                              content:()=>SKILL_CORE},
+  {id:'hermes',   name:'Hermes',         path:'~/.hermes/skills/besure.md',                                          content:()=>SKILL_YAML+SKILL_CORE},
+  {id:'trae',     name:'Trae',           path:'项目根目录 .cursorrules',                                             content:()=>SKILL_CORE},
+  {id:'workbuddy',name:'WorkBuddy',      path:'~/.workbuddy/plugins/marketplaces/codebuddy-plugins-official/plugins/besure/', content:()=>SKILL_YAML+SKILL_CORE},
+  {id:'aider',    name:'Aider',          path:'项目根目录 CONVENTIONS.md',                                           content:()=>SKILL_CORE},
+  {id:'copilot',  name:'GitHub Copilot', path:'项目 .github/copilot-instructions.md',                                content:()=>SKILL_CORE},
+];
+let currentSkillTool=null;
+
 function showSkillModal(){
-  const port=window.location.port;
-  document.getElementById('skillInstallCmd').value=`bash <(curl -sSL http://localhost:${port}/api/skill/install.sh)`;
+  showSkillToolList();
   showModal('skillModal');
 }
-function copySkillCmd(){
-  const el=document.getElementById('skillInstallCmd');
-  el.select();
-  navigator.clipboard.writeText(el.value);
+function showSkillToolList(){
+  currentSkillTool=null;
+  const grid=document.getElementById('skillToolGrid');
+  grid.innerHTML=SKILL_TOOLS.map(t=>
+    `<button class="btn" style="width:100%" onclick="showSkillTool('${t.id}')">${t.name}</button>`
+  ).join('');
+  document.getElementById('skillToolList').style.display='';
+  document.getElementById('skillToolDetail').style.display='none';
+  document.getElementById('skillModalClose').style.display='';
+}
+function showSkillTool(id){
+  const t=SKILL_TOOLS.find(x=>x.id===id);
+  if(!t)return;
+  currentSkillTool=t;
+  document.getElementById('skillToolName').textContent=t.name+' — Skill 内容';
+  document.getElementById('skillContent').textContent=t.content();
+  document.getElementById('skillInstallPath').textContent=t.path;
+  document.getElementById('skillToolList').style.display='none';
+  document.getElementById('skillToolDetail').style.display='';
+  document.getElementById('skillModalClose').style.display='none';
+}
+function copySkillContent(){
+  if(!currentSkillTool)return;
+  navigator.clipboard.writeText(currentSkillTool.content());
 }
 function showEntryModal(){if(!currentCtx){alert('Select a context first');return}showModal('entryModal')}
 function showModal(id){document.getElementById(id).classList.add('show')}
