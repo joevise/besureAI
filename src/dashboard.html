@@ -361,6 +361,20 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 </head>
 <body>
 
+<!-- Onboarding (首次启动设密码) -->
+<div class="login-overlay" id="onboardingOverlay" style="display:none">
+  <div class="login-box">
+    <div class="logo">🐉</div>
+    <h2>欢迎使用 Besure</h2>
+    <div class="sub">设置主密码来保护你的 AI 记忆</div>
+    <input type="password" id="setupPassword" placeholder="设置密码（至少4位）" onkeydown="if(event.key==='Enter')document.getElementById('setupPassword2').focus()">
+    <input type="password" id="setupPassword2" placeholder="确认密码" onkeydown="if(event.key==='Enter')doSetup()" style="margin-top:8px">
+    <div class="err" id="setupErr"></div>
+    <button id="setupBtn" onclick="doSetup()">开始使用</button>
+    <div style="margin-top:12px;font-size:12px;color:var(--text2)">🔒 AES-256 加密 · 密码无法找回</div>
+  </div>
+</div>
+
 <!-- Login -->
 <div class="login-overlay" id="loginOverlay">
   <div class="login-box">
@@ -573,7 +587,59 @@ function mobileBack(){
 }
 
 // === Data ===
+// === Onboarding ===
+async function checkOnboarding(){
+  try{
+    const res=await fetch('/api/onboarding');
+    const data=await res.json();
+    if(data.needed){
+      document.getElementById('onboardingOverlay').style.display='flex';
+      document.getElementById('loginOverlay').style.display='none';
+      setTimeout(()=>document.getElementById('setupPassword').focus(),100);
+      return true;
+    }
+  }catch(e){console.error('onboarding check failed',e)}
+  return false;
+}
+
+async function doSetup(){
+  const pw=document.getElementById('setupPassword').value;
+  const pw2=document.getElementById('setupPassword2').value;
+  if(pw.length<4){document.getElementById('setupErr').textContent='密码至少4位';return}
+  if(pw!==pw2){document.getElementById('setupErr').textContent='两次密码不一致';return}
+  document.getElementById('setupBtn').disabled=true;
+  document.getElementById('setupErr').textContent='正在创建...';
+  try{
+    const res=await fetch('/api/onboarding/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const data=await res.json();
+    if(data.ok){
+      // setup 成功，直接用这个密码登录
+      document.getElementById('setupErr').textContent='✅ 创建成功，正在进入...';
+      // 用刚设的密码登录
+      const loginRes=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+      const loginData=await loginRes.json();
+      if(loginData.ok&&loginData.data?.token){
+        SESSION_TOKEN=loginData.data.token;
+        sessionStorage.setItem('besure_session',SESSION_TOKEN);
+        document.getElementById('onboardingOverlay').style.display='none';
+        hideLogin();
+        await refresh();
+      }else{
+        // setup 成功但登录失败，走正常登录流程
+        document.getElementById('onboardingOverlay').style.display='none';
+        showLogin();
+      }
+    }else{
+      document.getElementById('setupErr').textContent=data.error||'Setup failed';
+    }
+  }catch(e){document.getElementById('setupErr').textContent='Setup failed: '+e.message}
+  document.getElementById('setupBtn').disabled=false;
+}
+
 async function init(){
+  // 先检查是否首次启动
+  const isFirstRun=await checkOnboarding();
+  if(isFirstRun)return;
   if(SESSION_TOKEN){
     try{const res=await api('/api/auth/check');if(res.ok){hideLogin();await refresh();return}}catch(e){}
   }
