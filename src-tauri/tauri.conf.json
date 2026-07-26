@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "Besure AI Context",
+  "productName": "Besure",
   "version": "0.62.0",
   "identifier": "com.besure.context",
   "build": {
@@ -10,30 +10,23 @@
     "frontendDist": "../src"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Besure AI Context",
-        "url": "http://localhost:17788",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 800,
-        "minHeight": 600,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["dmg", "app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": null,
+      "entitlements": null
+    }
   }
 }

@@ -9,13 +9,15 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1.0"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 rand = "0.8"
+dirs = "5.0"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 besure_lib = { path = "..", package = "besure" }
 
 [features]
