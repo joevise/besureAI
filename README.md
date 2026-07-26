@@ -6,9 +6,9 @@
 
 > 貔貅 (Píxiū), a mythical beast that only takes in and never loses — symbolizing memory that, once stored, is never forgotten.
 
-**Rust-powered · Local-first · End-to-end encrypted · MCP-native · Single binary**
+**Rust-powered · Local-first · End-to-end encrypted · CLI-native · Single binary**
 
-**Current version: 0.61.0** — Real semantic search: local fastembed (bge-small-zh-v1.5, 512-dim) runs fully offline — zero API cost, zero key, privacy-safe. `besure index` builds the vector index; `besure add` auto-indexes incrementally.
+**Current version: 0.62.0** — Real semantic search: local fastembed (bge-small-zh-v1.5, 512-dim) runs fully offline — zero API cost, zero key, privacy-safe. `besure index` builds the vector index; `besure add` auto-indexes incrementally.
 
 ---
 
@@ -21,7 +21,7 @@ You work on multiple projects. You switch between tasks. Every time you switch, 
 | Problem | Solution |
 |---------|----------|
 | 🔀 **Context loss** when switching projects | Git-branch-like context isolation — work on one, switch instantly |
-| 🤖 **AI agents can't remember** across sessions | Native MCP Server (23 tools) — Claude, Cursor, OpenClaw can store & retrieve context |
+| 🤖 **AI agents can't remember** across sessions | CLI-native integration — agents exec `besure` commands to store & retrieve context |
 | 🔐 **Multiple agents, no isolation** | Multi-vault architecture — each agent gets its own physically isolated vault |
 | ☁️ **Cloud dependency & privacy concerns** | 100% local — SQLite + Markdown, zero cloud required |
 | 🔓 **Data security** | AES-256-GCM + Argon2id encryption — keys never touch disk |
@@ -47,7 +47,7 @@ Semantic search runs **100% locally** via the embedded [`fastembed`](https://cra
 
 - **Auto incremental indexing**: every `besure add` embeds the new entry into `vectors.db` (synchronous, degrades gracefully if the model is unavailable — add is never blocked).
 - **Backfill existing data**: `besure index --all` embeds all existing entries (skips already-indexed ones; use `--rebuild` to redo).
-- **Search**: `besure search "semantic description" --semantic` finds memories by meaning, not keywords. Also available in MCP (`besure_search` with `semantic: true`), REST (`GET /api/search?q=...&semantic=true`, vault-scoped `GET /api/vaults/:id/search?...&semantic=true`), and the Dashboard (语义搜索 toggle).
+- **Search**: `besure search "semantic description" --semantic` finds memories by meaning, not keywords. Also available via REST (`GET /api/search?q=...&semantic=true`, vault-scoped `GET /api/vaults/:id/search?...&semantic=true`) and the Dashboard (语义搜索 toggle).
 - First run downloads the model (~100MB) to the HuggingFace cache (`~/.cache/huggingface`); afterwards it loads from disk in ~1-2s.
 
 ---
@@ -158,63 +158,35 @@ besure shared
 
 ---
 
-## Connect to AI Agents (MCP)
+## Connect to AI Agents (CLI)
 
-Besure AI Context includes a native MCP (Model Context Protocol) server. Any MCP-compatible AI tool can store and retrieve context:
+Besure AI Context is CLI-native. Any AI agent that can execute shell commands (Claude Code, OpenClaw, Cursor, Codex, etc.) can store and retrieve context by running `besure` commands directly.
 
-### Claude Desktop / OpenClaw / Cursor
+### How it works
 
-Add to your MCP config:
+1. **Inject the mandatory recording rules** — add the `skill/SKILL.md` iron rules to your agent's config (AGENTS.md / CLAUDE.md / .cursorrules). This tells the agent WHEN to record (after every task, decision, commit, deploy).
+2. **The agent execs `besure` commands** — no protocol, no server, no extra process. Each call is an independent `besure` invocation.
 
-```json
-{
-  "mcpServers": {
-    "besure": {
-      "command": "besure",
-      "args": ["mcp"]
-    }
-  }
-}
+Or run one command to do both (init + inject rules into detected agent config files):
+
+```bash
+besure setup --agent-name "Joey" --agent-type openclaw
 ```
 
 Now your AI agent can:
-- **List contexts** → see all your projects
-- **Add entries** → record decisions and progress (auto-tagged by LLM)
-- **Search memory** → find relevant past context
-- **Query with filters** → time/type/keyword/resolved filters (V0.4)
-- **List tags** → browse the auto-tag vocabulary (V0.58)
-- **Resolve entries** → mark tasks as done
-- **Append to entries** → supplement existing records
-- **View stats** → overview by tag/type/status (V0.58: By Tag is primary)
-- **Multi-vault** → isolated vaults per agent, shared vault for collaboration (V0.5)
-- **Create contexts** → start new project memory
-- **Export & share** → hand off context to teammates
+- **List contexts** → `besure list` — see all your projects
+- **Add entries** → `besure add "..." --type decision --context <id>` (auto-tagged by LLM)
+- **Search memory** → `besure search "..."` / `besure search "..." --semantic`
+- **Query with filters** → `besure query --last 7d --type decision` (V0.4)
+- **List tags** → `besure tags` (V0.58)
+- **Resolve entries** → `besure resolve <entry_id>`
+- **Append to entries** → `besure append <entry_id> "..."`
+- **View stats** → `besure stats` (V0.58: By Tag is primary)
+- **Multi-vault** → isolated vaults per agent via `BESURE_VAULT`, shared vault for collaboration (V0.5)
+- **Create contexts** → `besure create "..."`
+- **Export & share** → `besure export` / `besure import` / `besure share`
 
-### MCP Tools (23)
-
-| Tool | Purpose |
-|------|---------|
-| `besure_list_contexts` | List all contexts |
-| `besure_get_context` | Load full context info |
-| `besure_get_status` | Context or global status |
-| `besure_add_entry` | Record progress/decision/milestone/lesson (auto-tagged) |
-| `besure_search` | Full-text search across contexts |
-| `besure_create` | Create a new context |
-| `besure_switch` | Switch active context (fuzzy match) |
-| `besure_export` | Export context (encrypted .besure base64 with password, else Markdown) |
-| `besure_import` | Import encrypted .besure (base64 + password, deduped by entry id) |
-| `besure_link` | Link entries (caused_by/supersedes/related_to/...) |
-| `besure_expire` | Mark entry expired |
-| `besure_supersede` | Mark old entry superseded by new |
-| `besure_recall` | Recall entries needing attention |
-| `besure_query` | Unified query (time/type/context/keyword/resolved) |
-| `besure_resolve` | Mark entry resolved |
-| `besure_append` | Append content to an entry |
-| `besure_stats` | Statistics overview |
-| `besure_vaults` | List all vaults (requires `BESURE_VAULTS_ALL=true`) |
-| `besure_share` | Push entry to shared vault |
-| `besure_shared` | View shared vault contents |
-| `besure_list_tags` | List auto-tag vocabulary (tag + usage count) |
+See the [CLI Reference](#cli-reference) below for the full command list, and `skill/SKILL.md` for the agent-facing skill document.
 
 ---
 
@@ -320,7 +292,6 @@ besure purge <id>                 Permanently delete (irreversible)
 
 # === Server ===
 besure serve [--port 7788]        Start web dashboard + REST API
-besure mcp                        Start MCP server (stdio, 23 tools)
 besure export <context>           Export to encrypted .besure (default)
 besure export <context> --format md   Export to Markdown (legacy)
 besure import <file.besure>       Import encrypted .besure (dedupes by id)
@@ -336,7 +307,7 @@ besure import <file.besure>       Import encrypted .besure (dedupes by id)
 │                                          │
 │  ┌────────────────────────────────────┐  │
 │  │         Interface Layer            │  │
-│  │  CLI · MCP Server · REST API · Web │  │
+│  │  CLI · REST API · Web Dashboard     │  │
 │  └──────────────┬─────────────────────┘  │
 │                 │                        │
 │  ┌──────────────▼─────────────────────┐  │
@@ -364,7 +335,7 @@ Single binary. Zero external dependencies. Pure Rust.
 
 | | Besure AI Context | Obsidian | Notion | Mem.ai |
 |---|---|---|---|---|
-| **AI Agent integration** | Native (MCP) | None | Limited | API only |
+| **AI Agent integration** | CLI (exec) | None | Limited | API only |
 | **Context isolation** | Built-in (git-branch model) | Manual | Workspaces | Tags |
 | **Deployment** | Local-first, single binary | Local app | Cloud-only | Cloud-only |
 | **Encryption** | E2E, AES-256-GCM | No | No | At-rest only |
@@ -388,6 +359,7 @@ Single binary. Zero external dependencies. Pure Rust.
 | **V0.59** | ✅ Done | Encrypted export/import: `.besure` format (AES-256-GCM + Argon2id, not a zip — cannot be opened by any tool without password). `besure export --password` / `besure import --password`, vault-scoped REST endpoints, Dashboard Export/Import UI (21 MCP tools) |
 | **V0.60** | ✅ Done | Recycle Bin: soft delete contexts/entries to trash, restore or permanently purge. `besure delete/restore/trash/purge`, Dashboard Trash view, all list/stats/query exclude deleted items (23 MCP tools) |
 | **V0.61** | ✅ Done | Real semantic search: local fastembed + bge-small-zh-v1.5 (512-dim), fully offline/zero-cost/zero-key. `besure index`, auto-index on add, `search --semantic`, MCP `semantic` param, REST `?semantic=true`, Dashboard semantic toggle |
+| **V0.62** | ✅ Done | Removed MCP layer: agents integrate via CLI (exec `besure` commands) + SKILL.md iron rules. `besure mcp` command removed |
 | **Next** | 📋 Planned | Tauri desktop app, crates.io publish, GitHub Actions CI, Product Hunt launch |
 | **Future** | 📋 Planned | VS Code extension, browser extension, team collaboration |
 

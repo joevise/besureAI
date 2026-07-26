@@ -22,7 +22,7 @@ const TAG_PROMPT: &str = r#"你是一个内容分类助手。给给定内容打 
 输出格式：["标签1", "标签2"]"#;
 
 impl Tagger {
-    /// 从 ~/.besure/appconfig.json 的 llm 段构造 Tagger（MCP/REST 等非 CLI 路径用）
+    /// 从 ~/.besure/appconfig.json 的 llm 段构造 Tagger（REST 等非 CLI 路径用）
     pub fn from_app_config() -> Self {
         let path = crate::storage::Vault::default_root().join("appconfig.json");
         let llm_config = std::fs::read_to_string(&path)

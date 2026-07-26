@@ -6,9 +6,9 @@
 
 > 貔貅，只进不出，象征记忆一旦存入，永不丢失。
 
-**Rust 引擎 · 本地部署 · 端到端加密 · MCP 原生 · 单二进制**
+**Rust 引擎 · 本地部署 · 端到端加密 · CLI 原生 · 单二进制**
 
-**当前版本：0.61.0** — 真语义搜索：本地 fastembed（bge-small-zh-v1.5，512 维）完全离线运行——零 API 成本、零 key、隐私安全。`besure index` 建向量索引，`besure add` 自动增量索引。
+**当前版本：0.62.0** — 真语义搜索：本地 fastembed（bge-small-zh-v1.5，512 维）完全离线运行——零 API 成本、零 key、隐私安全。`besure index` 建向量索引，`besure add` 自动增量索引。
 
 [English](README.md) | 中文
 
@@ -23,7 +23,7 @@
 | 痛点 | 方案 |
 |------|------|
 | 🔀 切换项目时**上下文丢失** | 类似 git branch 的上下文隔离——专注一个，秒级切换 |
-| 🤖 **AI Agent 无法跨会话记忆** | 原生 MCP Server（23 个 tools）——Claude/Cursor/OpenClaw 可直接存取上下文 |
+| 🤖 **AI Agent 无法跨会话记忆** | CLI 原生接入——Agent 通过 exec `besure` 命令直接存取上下文 |
 | 🔐 **多个 Agent 之间无隔离** | 多 Vault 架构——每个 Agent 拥有物理隔离的独立记忆空间 |
 | ☁️ **云依赖和隐私担忧** | 100% 本地——SQLite + Markdown，零云服务 |
 | 🔓 **数据安全** | AES-256-GCM + Argon2id 加密——密钥永不落盘 |
@@ -49,7 +49,7 @@ Besure AI Context 只有**三个**核心概念：
 
 - **自动增量索引**：每次 `besure add` 同步把新 entry 向量写入 `vectors.db`（模型不可用时优雅降级，绝不阻塞 add）。
 - **存量补建**：`besure index --all` 给所有存量 entry 建向量（已索引的自动跳过；`--rebuild` 强制重建）。
-- **搜索**：`besure search "语义描述" --semantic` 按意思找记忆，而不是关键词。MCP（`besure_search` 加 `semantic: true`）、REST（`GET /api/search?q=...&semantic=true`，vault 级 `GET /api/vaults/:id/search?...&semantic=true`）、Dashboard（"语义搜索"开关）均已支持。
+- **搜索**：`besure search "语义描述" --semantic` 按意思找记忆，而不是关键词。REST（`GET /api/search?q=...&semantic=true`，vault 级 `GET /api/vaults/:id/search?...&semantic=true`）、Dashboard（"语义搜索"开关）均已支持。
 - 首次运行自动下载模型（~100MB）到 HuggingFace 缓存（`~/.cache/huggingface`），之后本地加载仅需 1-2 秒。
 
 ---
@@ -157,61 +157,35 @@ besure shared
 
 ---
 
-## 接入 AI Agent（MCP）
+## 接入 AI Agent（CLI）
 
-Besure AI Context 内置 MCP（Model Context Protocol）Server，任何支持 MCP 的 AI 工具都能直接用：
+Besure AI Context 是 CLI 原生的。任何能执行 shell 命令的 AI Agent（Claude Code、OpenClaw、Cursor、Codex 等）都可以直接运行 `besure` 命令来存取上下文。
 
-### Claude Desktop / OpenClaw / Cursor
+### 接入方式
 
-```json
-{
-  "mcpServers": {
-    "besure": {
-      "command": "besure",
-      "args": ["mcp"]
-    }
-  }
-}
+1. **注入强制记忆铁律** —— 把 `skill/SKILL.md` 的铁律加入 Agent 配置文件（AGENTS.md / CLAUDE.md / .cursorrules）。铁律告诉 Agent 什么时候必须记录（完成任务、做决策、commit、部署之后）。
+2. **Agent 通过 exec 调用 `besure` 命令** —— 无协议、无额外服务进程，每次调用都是一次独立的 `besure` 命令。
+
+或者一条命令搞定（初始化 + 自动检测 Agent 配置文件并注入铁律）：
+
+```bash
+besure setup --agent-name "Joey" --agent-type openclaw
 ```
 
 AI Agent 可以：
-- **列出上下文** → 看到所有项目
-- **添加记录** → 自动记录决策和进展（LLM 自动打标）
-- **搜索记忆** → 找到相关的历史上下文
-- **统一查询** → 按时间/类型/关键词/resolved 过滤（V0.4）
-- **查看标签库** → 浏览自动标签词汇表（V0.58）
-- **标记完成** → resolve 标记已解决的事项
-- **追加内容** → 往已有记录补充信息
-- **统计概览** → 按标签/类型/状态查看分布（V0.58 起 Stats 以 By Tag 为主）
-- **多 Vault** → 每个 Agent 独立隔离，共享需显式推送（V0.5）
-- **创建上下文** → 开始新项目记忆
-- **导出分享** → 交接给同事
+- **列出上下文** → `besure list`，看到所有项目
+- **添加记录** → `besure add "..." --type decision --context <id>`（LLM 自动打标）
+- **搜索记忆** → `besure search "..."` / `besure search "..." --semantic`
+- **统一查询** → `besure query --last 7d --type decision`（V0.4）
+- **查看标签库** → `besure tags`（V0.58）
+- **标记完成** → `besure resolve <entry_id>`
+- **追加内容** → `besure append <entry_id> "..."`
+- **统计概览** → `besure stats`（V0.58 起 Stats 以 By Tag 为主）
+- **多 Vault** → 每个 Agent 通过 `BESURE_VAULT` 独立隔离，共享需显式推送（V0.5）
+- **创建上下文** → `besure create "..."`
+- **导出分享** → `besure export` / `besure import` / `besure share`
 
-### MCP Tools（23 个）
-
-| Tool | 用途 |
-|------|------|
-| `besure_list_contexts` | 列出所有上下文 |
-| `besure_get_context` | 加载完整上下文信息 |
-| `besure_get_status` | 上下文或全局状态 |
-| `besure_add_entry` | 记录进展/决策/里程碑/教训（自动打标） |
-| `besure_search` | 全文搜索 |
-| `besure_create` | 创建新上下文 |
-| `besure_switch` | 切换上下文（模糊匹配） |
-| `besure_export` | 导出上下文（带 password 导出加密 .besure base64，否则 Markdown） |
-| `besure_import` | 导入加密 .besure（base64 + 密码，entry 按 id 去重） |
-| `besure_link` | 建立 entry 关联（caused_by/supersedes/related_to/...） |
-| `besure_expire` | 标记 entry 过期 |
-| `besure_supersede` | 标记旧 entry 被新 entry 替代 |
-| `besure_recall` | 召回需要注意的记忆 |
-| `besure_query` | 统一查询（时间/类型/上下文/关键词/resolved） |
-| `besure_resolve` | 标记 entry 完成 |
-| `besure_append` | 追加内容到已有 entry |
-| `besure_stats` | 统计概览 |
-| `besure_vaults` | 列出所有 vault（需 `BESURE_VAULTS_ALL=true`） |
-| `besure_share` | 推送 entry 到共享 vault |
-| `besure_shared` | 查看共享 vault 内容 |
-| `besure_list_tags` | 列出自动标签库（标签 + 使用次数） |
+完整命令列表见下方 [CLI 命令](#cli-命令)，Agent 侧的 skill 文档见 `skill/SKILL.md`。
 
 ---
 
@@ -318,7 +292,6 @@ besure purge <id>                 永久删除（不可恢复）
 # === 服务 ===
 besure setup [--agent-name <n>]      一键配置：初始化 + Agent 铁律注入
 besure serve [--port 7788]        启动 Web Dashboard + REST API
-besure mcp                        启动 MCP Server（stdio，23 个 tools）
 besure export <context>           导出为加密 .besure（默认）
 besure export <context> --format md   导出为 Markdown（旧版）
 besure import <file.besure>       导入加密 .besure（按 id 去重）
@@ -372,6 +345,7 @@ Step 3: Inject mandatory recording rules
 | **V0.59** | ✅ 完成 | 加密导出/导入：`.besure` 自有加密格式（AES-256-GCM + Argon2id，不是 zip——无密码无法被任何工具打开）。`besure export --password` / `besure import --password`，vault-scoped REST 端点，Dashboard Export/Import UI（21 MCP tools） |
 | **V0.60** | ✅ 完成 | 回收站机制：Context/Entry 软删除入回收站，可恢复、可永久清除。`besure delete/restore/trash/purge`，Dashboard Trash 视图，所有列表/统计/查询排除已删除项（23 MCP tools） |
 | **V0.61** | ✅ 完成 | 真语义搜索：本地 fastembed + bge-small-zh-v1.5（512 维），完全离线/零成本/零 key。`besure index` 补建索引、add 自动增量索引、`search --semantic`、MCP `semantic` 参数、REST `?semantic=true`、Dashboard 语义搜索开关 |
+| **V0.62** | ✅ 完成 | 移除 MCP 层：Agent 通过 CLI（exec `besure` 命令）+ SKILL.md 铁律接入。删除 `besure mcp` 命令 |
 | **下一步** | 📋 计划中 | Tauri 桌面 APP、crates.io 发布、GitHub Actions CI、Product Hunt 上线 |
 | **未来** | 📋 计划中 | VS Code 插件、浏览器插件、团队协作 |
 

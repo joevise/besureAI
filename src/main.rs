@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.61.0",
+    version = "0.62.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -155,10 +155,6 @@ enum Commands {
         #[arg(long, action = ArgAction::SetTrue)]
         auto: bool,
     },
-
-    /// Start MCP Server (stdio)
-    #[command(name = "mcp")]
-    Mcp,
 
     /// Start REST API / Dashboard server
     #[command(name = "serve")]
@@ -382,9 +378,6 @@ fn main() -> anyhow::Result<()> {
         Commands::Status => cli::commands::cmd_status(),
         Commands::Absorb { from, auto } => {
             cli::commands::cmd_absorb_from_args(from.as_deref(), auto)
-        }
-        Commands::Mcp => {
-            ai::mcp_server::McpServer::run()
         }
         Commands::Serve { port } => {
             let rt = tokio::runtime::Runtime::new()?;

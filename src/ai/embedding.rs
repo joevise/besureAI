@@ -88,7 +88,7 @@ impl EmbeddingProvider {
         Self { config, client }
     }
 
-    /// 从 ~/.besure/appconfig.json 的 embedding 段构造（MCP/REST 等非 CLI 路径用）
+    /// 从 ~/.besure/appconfig.json 的 embedding 段构造（REST 等非 CLI 路径用）
     pub fn from_app_config() -> Self {
         let path = crate::storage::Vault::default_root().join("appconfig.json");
         let config = std::fs::read_to_string(&path)

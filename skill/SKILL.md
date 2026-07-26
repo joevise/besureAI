@@ -249,9 +249,9 @@ besure retag --all              # 全库
   besure appconfig llm.api_key sk-or-v1-你自己的KEY
   besure appconfig llm.model deepseek/deepseek-v4-flash
   ```
-- **没有 config 命令**：V0.58 起砍掉 context 级 `besure config set/get/list`（MCP 的 `besure_config_*` 同步移除）。以前当配置存的内容直接 `besure add`，靠自动标签检索
+- **没有 config 命令**：V0.58 起砍掉 context 级 `besure config set/get/list`。以前当配置存的内容直接 `besure add`，靠自动标签检索
 - Dashboard 每条 entry 显示标签，可按标签筛选（前端过滤）
-- MCP tool `besure_list_tags` 返回标签库；REST `GET /api/tags`
+- REST `GET /api/tags` 返回标签库
 
 ### V0.59 加密导出/导入（.besure 格式）
 
@@ -267,7 +267,6 @@ besure import backup.besure
 
 要点：
 - 每次导出随机生成 salt + nonce，同内容两次导出文件不同
-- MCP：`besure_export` 带 `password` 参数返回 base64 加密内容；`besure_import` 接受 `file_base64` + `password`
 - Dashboard：Export 按钮弹密码框下载 .besure；侧栏 ⇪ 按钮上传导入
 
 ### 生产级记录格式（推荐）
@@ -322,6 +321,5 @@ echo "对话内容..." | besure absorb --auto
 - V0.4 query 默认返回 20 条，紧凑格式（对 Agent 友好）
 - V0.4 resolve 标记完成，append 追加内容（加分隔线+时间戳）
 - DB migration 幂等，多次运行安全
-- MCP Server 22 个 tools（含 query/resolve/append/stats/list_tags）
 - Dashboard 支持 filter bar、resolved 徽章、append 输入框、Stats Tab、Tags Tab、标签筛选
 - V0.58 自动标签：add 时 LLM 同步打标（1-3 个大类），tag_vocab 复用防同义词；LLM 不可用自动降级
