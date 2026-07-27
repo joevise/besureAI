@@ -72,7 +72,7 @@ besure index --all               # 给存量数据建向量索引
 
 | 命令 | 说明 |
 |------|------|
-| `besure add "text" --type T --context C` | 添加记忆（type: milestone/decision/lesson/progress/note/question/blocker） |
+| `besure add "text" --type T --tags A,B --context C` | 添加记忆（type: milestone/decision/lesson/progress/note/question/blocker） |
 | `besure search "query"` | 全文搜索 |
 | `besure search "query" --semantic` | 语义搜索（本地 AI，离线） |
 | `besure list` | 列出所有 context |
@@ -95,14 +95,19 @@ besure index --all               # 给存量数据建向量索引
 | `besure index --all` | 建立向量索引 |
 | `besure --version` | 版本号 |
 
-## Auto-tagging
+## Tag 规则（重要）
 
-`besure add` 会自动用 LLM 打 1-3 个标签。配置：
+调用 `besure add` 时，**必须自己生成 tags 传进来**（你本身就是大模型，不需要额外调 API）：
+
+1. **先看已有标签**：运行 `besure tags` 获取当前标签库
+2. **优先复用**：从已有标签里选合适的，**不要造同义词**
+3. **不够才新建**：已有标签确实没有合适的，才创建新标签
+4. **大类原则**：标签必须是宽泛大类（如：后端开发、部署、家庭、投资、产品规划），不要具体名词
+5. **最多3个**：每次最多传 3 个标签
+
 ```bash
-besure appconfig llm.provider openrouter
-besure appconfig llm.api_url https://openrouter.ai/api/v1/chat/completions
-besure appconfig llm.api_key sk-or-你的KEY
-besure appconfig llm.model deepseek/deepseek-v4-flash
+besure tags                                                        # 先看已有的
+besure add "内容" --type milestone --tags 部署,安装 --context ctx_xxx  # 自己生成 tag
 ```
 
 ## Semantic Search

@@ -1213,22 +1213,14 @@ function generateSkillInstruction(t){
 步骤：
 1. 确认 besure CLI 可用：运行 \`which besure\` 或 \`~/Library/Application\\ Support/Besure/bin/besure --version\`
 2. 初始化 vault（如果还没初始化）：运行 \`besure init\` 然后 \`echo \"你的密码\" | besure unlock\`
-3. 配置自动标签 LLM（用于 besure add 时自动打标签）：
-   \`\`\`
-   besure appconfig llm.provider openrouter
-   besure appconfig llm.api_url https://openrouter.ai/api/v1/chat/completions
-   besure appconfig llm.api_key sk-or-你的KEY
-   besure appconfig llm.model deepseek/deepseek-v4-flash
-   \`\`\`
-   如果没有 OpenRouter key，去 https://openrouter.ai/keys 免费注册获取。
-4. 将以下内容写入 \`${t.path}\`：
+3. 将以下内容写入 \`${t.path}\`：
 
 ${'```'}
 ${t.content()}
 ${'```'}
 
-5. 如果是追加（AGENTS.md/CLAUDE.md），在文件末尾添加分隔线后追加上述内容。
-6. 安装完成后，从现在开始遵守上述铁律。
+4. 如果是追加（AGENTS.md/CLAUDE.md），在文件末尾添加分隔线后追加上述内容。
+5. 安装完成后，从现在开始遵守上述铁律。
 
 Besure Dashboard 地址：http://localhost:${port}`;
 }

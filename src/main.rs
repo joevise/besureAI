@@ -56,6 +56,9 @@ enum Commands {
         /// Explicitly specify target context ID (prevents cross-context data corruption)
         #[arg(long = "context")]
         context: Option<String>,
+        /// Tags (comma-separated, max 3)
+        #[arg(long = "tags", value_delimiter = ',')]
+        tags: Vec<String>,
     },
 
     /// List all contexts
@@ -352,8 +355,8 @@ fn main() -> anyhow::Result<()> {
             cli::commands::cmd_create_from_args(&title, &tags, summary.as_deref())
         }
         Commands::Switch { query } => cli::commands::cmd_switch_from_args(&query),
-        Commands::Add { content, from_file, entry_type, context } => {
-            cli::commands::cmd_add_from_args(content.as_deref(), from_file.as_deref(), &entry_type, context.as_deref())
+        Commands::Add { content, from_file, entry_type, context, tags } => {
+            cli::commands::cmd_add_from_args(content.as_deref(), from_file.as_deref(), &entry_type, context.as_deref(), &tags)
         }
         Commands::List => cli::commands::cmd_list(),
         Commands::Tags => cli::commands::cmd_tags(),

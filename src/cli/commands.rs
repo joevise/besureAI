@@ -134,7 +134,7 @@ pub fn cmd_switch_from_args(query: &str) -> Result<()> {
 }
 
 // === add ===
-pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_type: &str, explicit_context: Option<&str>) -> Result<()> {
+pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_type: &str, explicit_context: Option<&str>, explicit_tags: &[String]) -> Result<()> {
     let vault = get_unlocked_vault()?;
     
     // Use explicit context if provided, otherwise fall back to current context
@@ -165,12 +165,14 @@ pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_t
 
     let entry = Entry::new(&context_id, &final_content, entry_type);
 
-    // 自动打标（同步，LLM 不可用时降级为空标签，绝不阻塞 add）
+    // tags 由调用方（Agent）显式传入，不再调 LLM 自动打标
     let db = vault.database()?;
     let app_config = load_config().unwrap_or_default();
-    let tagger = Tagger::new(app_config.llm);
-    let existing = db.list_vocab_tags().unwrap_or_default();
-    let tags = tagger.tag(&final_content, &existing).unwrap_or_default();
+    let tags: Vec<String> = explicit_tags.iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .take(3)
+        .collect();
 
     let mut entry = entry;
     entry.tags = tags.clone();
@@ -186,7 +188,7 @@ pub fn cmd_add_from_args(content: Option<&str>, from_file: Option<&str>, entry_t
     }
 
     if tags.is_empty() {
-        println!("✓ Added {} entry to {}", entry_type, context_id);
+        println!("✓ Added {} entry to {}  (no tags — use --tags to add)", entry_type, context_id);
     } else {
         println!("✓ Added {} entry to {}  🏷 {}", entry_type, context_id, tags.join(", "));
     }
