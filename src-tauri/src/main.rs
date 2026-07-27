@@ -10,11 +10,20 @@ mod server;
 mod tray;
 
 /// App 数据目录：macOS 上为 ~/Library/Application Support/Besure/
+/// 用于存 config.json、Dashboard 配置等
 pub fn app_data_dir() -> PathBuf {
     let base = dirs::data_dir()
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."));
     base.join("Besure")
+}
+
+/// Vault 统一目录：~/.besure/
+/// App、CLI、所有 Agent 都用这同一个目录
+pub fn vault_root() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".besure")
 }
 
 /// 从 start 开始找一个空闲端口
@@ -37,16 +46,16 @@ fn wait_for_server(port: u16) {
 }
 
 fn main() {
-    // 1. 数据目录：~/Library/Application Support/Besure/vaults
+    // 1. 统一 vault 目录：~/.besure/（跟 CLI 完全一致）
     let data_dir = app_data_dir();
     std::fs::create_dir_all(&data_dir).ok();
-    let vault_root = data_dir.join("vaults");
-    std::fs::create_dir_all(&vault_root).ok();
+    let vaults = vault_root();
+    std::fs::create_dir_all(&vaults).ok();
 
     // 必须在 ApiServer 启动前设好环境变量
-    std::env::set_var("BESURE_VAULT_ROOT", &vault_root);
-    std::env::set_var("BESURE_VAULT", vault_root.join("default"));
+    std::env::set_var("BESURE_VAULT_ROOT", &vaults);
     std::env::set_var("BESURE_VAULTS_ALL", "true");
+    // 不设 BESURE_VAULT — 让 CLI 的 default_root() 自然 fallback 到 ~/.besure/
 
     // 恢复 Dashboard 密码（onboarding 时写入 config.json）
     if let Ok(json) = std::fs::read_to_string(data_dir.join("config.json")) {
@@ -94,7 +103,7 @@ fn main() {
                 .resolve("besure", tauri::path::BaseDirectory::Resource)
             {
                 if resource.exists() {
-                    let target = app_data_dir().join("bin").join("besure");
+                    let target = vaults.join("bin").join("besure");
                     let deployed = (|| -> std::io::Result<()> {
                         if let Some(parent) = target.parent() {
                             std::fs::create_dir_all(parent)?;
