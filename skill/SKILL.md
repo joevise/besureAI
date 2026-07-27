@@ -1,14 +1,14 @@
 ---
 name: besure
 version: 1.0.0
-description: "AI 闭环记忆系统：自动记录决策、进展、教训，语义搜索历史记忆，跨会话上下文保持。完成任务、做出决策、发现问题或结束会话时必须调用。"
+description: "AI 貔貅记忆系统：自动记录决策、进展、教训，语义搜索历史记忆，跨会话上下文保持。完成任务、做出决策、发现问题或结束会话时必须调用。"
 metadata:
   requires:
     bins: ["besure"]
   cliHelp: "besure --help"
 ---
 
-# Besure AI Context — 闭环记忆系统
+# Besure AI Context — 貔貅记忆系统
 
 ## 🚨 MANDATORY RECORDING RULES (NO EXCEPTIONS)
 

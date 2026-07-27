@@ -1056,7 +1056,7 @@ function exitSearchMode(restore){
 // === Modals ===
 function showCreateModal(){showModal('createModal')}
 
-const SKILL_CORE=`# Besure AI Context — 闭环记忆系统
+const SKILL_CORE=`# Besure AI Context — 貔貅记忆系统
 
 ## 🚨 MANDATORY RECORDING RULES (NO EXCEPTIONS)
 
@@ -1147,7 +1147,7 @@ besure index --all               # 给存量数据建向量索引
 const SKILL_YAML=`---
 name: besure
 version: 1.0.0
-description: "AI 闭环记忆系统：自动记录决策、进展、教训，语义搜索历史记忆，跨会话上下文保持。完成任务、做出决策、发现问题或结束会话时必须调用。"
+description: "AI 貔貅记忆系统：自动记录决策、进展、教训，语义搜索历史记忆，跨会话上下文保持。完成任务、做出决策、发现问题或结束会话时必须调用。"
 metadata:
   requires:
     bins: ["besure"]
@@ -1157,7 +1157,7 @@ metadata:
 `;
 
 const SKILL_CURSOR_FM=`---
-description: Besure AI 闭环记忆系统
+description: Besure AI 貔貅记忆系统
 alwaysApply: true
 ---
 
@@ -1196,16 +1196,37 @@ function showSkillTool(id){
   const t=SKILL_TOOLS.find(x=>x.id===id);
   if(!t)return;
   currentSkillTool=t;
-  document.getElementById('skillToolName').textContent=t.name+' — Skill 内容';
-  document.getElementById('skillContent').textContent=t.content();
+  document.getElementById('skillToolName').textContent=t.name+' — 安装指令';
+  // 生成指令：告诉 Agent 怎么安装
+  const inst = generateSkillInstruction(t);
+  document.getElementById('skillContent').textContent = inst;
   document.getElementById('skillInstallPath').textContent=t.path;
   document.getElementById('skillToolList').style.display='none';
   document.getElementById('skillToolDetail').style.display='';
   document.getElementById('skillModalClose').style.display='none';
 }
+function generateSkillInstruction(t){
+  // 检查 besure binary 是否可用
+  const port = window.location.port || '7788';
+  return `请安装 Besure 貔貅记忆系统到你的 ${t.name} 配置中。
+
+步骤：
+1. 确认 besure CLI 可用：运行 \`which besure\` 或 \`~/Library/Application\\ Support/Besure/bin/besure --version\`
+2. 将以下内容写入 \`${t.path}\`：
+
+${'```'}
+${t.content()}
+${'```'}
+
+3. 如果是追加（AGENTS.md/CLAUDE.md），在文件末尾添加分隔线后追加上述内容。
+4. 安装完成后，从现在开始遵守上述铁律。
+
+Besure Dashboard 地址：http://localhost:${port}`;
+}
 function copySkillContent(){
   if(!currentSkillTool)return;
-  navigator.clipboard.writeText(currentSkillTool.content());
+  const inst = generateSkillInstruction(currentSkillTool);
+  navigator.clipboard.writeText(inst);
 }
 function showEntryModal(){if(!currentCtx){alert('Select a context first');return}showModal('entryModal')}
 function showModal(id){document.getElementById(id).classList.add('show')}
