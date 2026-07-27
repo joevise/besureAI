@@ -34,12 +34,9 @@ struct SetupBody {
     password: String,
 }
 
-/// 默认 vault 的配置文件路径（BESURE_VAULT_ROOT/default/.besure.config）
+/// 默认 vault 的配置文件路径：~/.besure/.besure.config（跟 CLI besure init 一致）
 fn default_vault_config_path() -> PathBuf {
-    let root = std::env::var("BESURE_VAULT_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| Vault::default_root());
-    root.join("default").join(".besure.config")
+    Vault::default_root().join(".besure.config")
 }
 
 fn err_response(code: StatusCode, msg: &str) -> Response {
