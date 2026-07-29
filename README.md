@@ -8,7 +8,7 @@
 
 **Rust-powered · Local-first · End-to-end encrypted · CLI-native · Single binary**
 
-**Current version: 0.62.0** — Real semantic search: local fastembed (bge-small-zh-v1.5, 512-dim) runs fully offline — zero API cost, zero key, privacy-safe. `besure index` builds the vector index; `besure add` auto-indexes incrementally.
+**Current version: 0.63.0** — Real semantic search: local fastembed (bge-small-zh-v1.5, 512-dim) runs fully offline — zero API cost, zero key, privacy-safe. `besure index` builds the vector index; `besure add` auto-indexes incrementally.
 
 ---
 
