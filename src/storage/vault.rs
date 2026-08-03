@@ -87,6 +87,16 @@ impl Vault {
     pub fn list_vault_dirs() -> Vec<(String, PathBuf)> {
         let parent = Self::vault_parent();
         let mut vaults = Vec::new();
+        
+        // 检查 parent 本身是否也是一个 vault（根 vault）
+        if parent.join(".besure.config").exists() {
+            let name = parent.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "default".to_string());
+            vaults.push((name, parent.clone()));
+        }
+        
+        // 扫描 parent 下的子目录
         if let Ok(entries) = fs::read_dir(&parent) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let path = entry.path();
@@ -94,7 +104,10 @@ impl Vault {
                     let name = path.file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    vaults.push((name, path));
+                    // 避免重复（如果 parent 本身已加入）
+                    if !vaults.iter().any(|(n, _)| n == &name) {
+                        vaults.push((name, path));
+                    }
                 }
             }
         }

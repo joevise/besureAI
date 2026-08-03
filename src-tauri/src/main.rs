@@ -47,12 +47,13 @@ fn wait_for_server(port: u16) {
 
 fn main() {
     // 1. 统一 vault 目录：~/.besure/（跟 CLI 完全一致）
-    // 不设 BESURE_VAULT_ROOT — 让 vault_parent() 自然 fallback 到 ~/，
-    // 这样扫描 ~/ 下的子目录就能找到 ~/.besure/ 作为一个 vault
+    // 设 BESURE_VAULT_ROOT=~/.besure/，list_vault_dirs 会扫描这个目录下的
+    // 子目录（各 Agent 的独立 vault）+ 根目录本身（默认 vault）
     let data_dir = app_data_dir();
     std::fs::create_dir_all(&data_dir).ok();
     let vaults = vault_root();
     std::fs::create_dir_all(&vaults).ok();
+    std::env::set_var("BESURE_VAULT_ROOT", &vaults);
     std::env::set_var("BESURE_VAULTS_ALL", "true");
 
     // 恢复 Dashboard 密码（onboarding 时写入 config.json）
