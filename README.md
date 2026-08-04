@@ -8,7 +8,7 @@
 
 **Rust-powered · Local-first · End-to-end encrypted · CLI-native · Single binary**
 
-**Current version: 0.63.0** — Real semantic search: local fastembed (bge-small-zh-v1.5, 512-dim) runs fully offline — zero API cost, zero key, privacy-safe. `besure index` builds the vector index; `besure add` auto-indexes incrementally.
+**Current version: 0.65.0** — Real semantic search: local fastembed (bge-small-zh-v1.5, 512-dim) runs fully offline — zero API cost, zero key, privacy-safe. `besure index` builds the vector index; `besure add` auto-indexes incrementally.
 
 ---
 
@@ -37,7 +37,7 @@ Besure AI Context has exactly **three** core concepts — nothing else:
 |---------|-----------|
 | **Context** | An isolated memory space (like a git branch). One per project/task. |
 | **Entry** | A single memory record inside a context. Everything is an entry: progress, decisions, milestones, blockers, notes, lessons, questions. |
-| **Auto Tags** | Every entry is automatically tagged with 1–3 broad flat tags by an LLM at `besure add` time (synchronous). Tags are emergent: a shared `tag_vocab` vocabulary reuses semantically identical tags to prevent synonym explosion. |
+| **Auto Tags** | Every entry carries 1–3 broad flat tags, passed by the agent via `--tags` at `besure add` time. Tags are emergent: a shared `tag_vocab` vocabulary reuses semantically identical tags to prevent synonym explosion. |
 
 > **No Config concept.** As of V0.58, there is no separate "config" feature — everything you used to store as config is just a regular entry, organized and found via auto tags. (App-level LLM/embedding provider settings live in `~/.besure/appconfig.json`, managed via `besure appconfig`.)
 
@@ -175,7 +175,7 @@ besure setup --agent-name "Joey" --agent-type openclaw
 
 Now your AI agent can:
 - **List contexts** → `besure list` — see all your projects
-- **Add entries** → `besure add "..." --type decision --context <id>` (auto-tagged by LLM)
+- **Add entries** → `besure add "..." --type decision --context <id>` (tags passed by agent via --tags)
 - **Search memory** → `besure search "..."` / `besure search "..." --semantic`
 - **Query with filters** → `besure query --last 7d --type decision` (V0.4)
 - **List tags** → `besure tags` (V0.58)
@@ -187,6 +187,24 @@ Now your AI agent can:
 - **Export & share** → `besure export` / `besure import` / `besure share`
 
 See the [CLI Reference](#cli-reference) below for the full command list, and `skill/SKILL.md` for the agent-facing skill document.
+
+---
+
+## macOS Desktop App (V0.64)
+
+A native macOS app built with **Tauri 2** — everything the CLI does, wrapped in a fast, lightweight desktop experience:
+
+- **Onboarding flow** — first-launch wizard walks you through vault creation and agent setup.
+- **Menu bar tray** — lives in the menu bar for instant access to your contexts.
+- **Multi-vault Dashboard** — browse, search, and manage entries across all your vaults in one window.
+- **Multi-vault auto-discovery (V0.65)** — automatically discovers your root vault plus every vault in its subdirectories.
+- **One-click Skill install** — install the Besure skill into your agent tools with a single click: Cursor, Codex, OpenClaw, Windsurf, Claude Code, Cline, Hermes, Trae, WorkBuddy, Aider, GitHub Copilot.
+
+Download the `.dmg` from [Releases](https://github.com/joevise/besureAI/releases), or build from source:
+
+```bash
+./build-macos.sh
+```
 
 ---
 
@@ -261,7 +279,7 @@ besure share-context <ctx_id>     Share entire context
 besure shared [--keyword <kw>]    View shared vault contents
 
 # === Auto-Tagging (V0.58) ===
-besure add <content>              Auto-tags entry with 1-3 broad tags (sync, LLM)
+besure add <content> --tags a,b,c  Tags passed by agent via --tags (1-3 broad tags)
 besure tags                       Show tag vocabulary (tag + usage count)
 besure retag [--all] [--context <id>]  Re-tag existing entries
 
@@ -269,13 +287,6 @@ besure retag [--all] [--context <id>]  Re-tag existing entries
 besure appconfig <key> <value>    Set app-level config, e.g.:
                                   llm.provider / llm.api_url / llm.api_key / llm.model
                                   embedding.provider / embedding.api_url / embedding.api_key / embedding.model
-
-# --- Recommended LLM for auto-tagging: OpenRouter + DeepSeek V4 Flash (cheap & fast) ---
-# Get your own key at https://openrouter.ai/keys, then:
-besure appconfig llm.provider openrouter
-besure appconfig llm.api_url https://openrouter.ai/api/v1/chat/completions
-besure appconfig llm.api_key sk-or-v1-YOUR_OWN_KEY
-besure appconfig llm.model deepseek/deepseek-v4-flash
 
 # === Closure (V3) ===
 besure link <id> --to <id>        Link entries (caused_by/supersedes/related_to)
@@ -349,18 +360,21 @@ Single binary. Zero external dependencies. Pure Rust.
 | Phase | Status | Features |
 |-------|--------|----------|
 | **MVP** | ✅ Done | Crypto engine, SQLite, CLI, Markdown files |
-| **V1-V2** | ✅ Done | Vector search, MCP server (8 tools), Absorb, REST API, Web Dashboard with auth |
-| **V3** | ✅ Done | Closure engine: entry links, expiry, supersede, recall (16 MCP tools) |
-| **V0.4** | ✅ Done | Unified query (time/type/keyword/resolved filters), resolve, append, stats (20 MCP tools) |
-| **V0.5** | ✅ Done | Multi-vault architecture: physical isolation per agent, global view, shared vault (23 MCP tools) |
+| **V1-V2** | ✅ Done | Vector search, Absorb, REST API, Web Dashboard with auth |
+| **V3** | ✅ Done | Closure engine: entry links, expiry, supersede, recall |
+| **V0.4** | ✅ Done | Unified query (time/type/keyword/resolved filters), resolve, append, stats |
+| **V0.5** | ✅ Done | Multi-vault architecture: physical isolation per agent, global view, shared vault |
 | **V0.5.5** | ✅ Done | Dashboard multi-Agent view: sidebar Agent list, data source switching |
 | **V0.56** | ✅ Done | `besure setup` + mandatory recording rules: multi-platform detection, idempotent injection |
-| **V0.58** | ✅ Done | Emergent auto-tagging: removed Config concept — everything is now entries + auto flat broad tags. LLM tags every entry on add (1-3 tags, sync), `tag_vocab` table with synonym reuse, `besure tags` / `besure retag`, Dashboard Stats now By Tag, Dashboard auth fix (BESURE_DASHBOARD_PASSWORD) (20 MCP tools) |
-| **V0.59** | ✅ Done | Encrypted export/import: `.besure` format (AES-256-GCM + Argon2id, not a zip — cannot be opened by any tool without password). `besure export --password` / `besure import --password`, vault-scoped REST endpoints, Dashboard Export/Import UI (21 MCP tools) |
-| **V0.60** | ✅ Done | Recycle Bin: soft delete contexts/entries to trash, restore or permanently purge. `besure delete/restore/trash/purge`, Dashboard Trash view, all list/stats/query exclude deleted items (23 MCP tools) |
-| **V0.61** | ✅ Done | Real semantic search: local fastembed + bge-small-zh-v1.5 (512-dim), fully offline/zero-cost/zero-key. `besure index`, auto-index on add, `search --semantic`, MCP `semantic` param, REST `?semantic=true`, Dashboard semantic toggle |
+| **V0.58** | ✅ Done | Emergent auto-tagging: removed Config concept — everything is now entries + flat broad tags. Agent passes tags via --tags flag (1-3 tags), `tag_vocab` table with synonym reuse, `besure tags` / `besure retag`, Dashboard Stats now By Tag, Dashboard auth fix (BESURE_DASHBOARD_PASSWORD) |
+| **V0.59** | ✅ Done | Encrypted export/import: `.besure` format (AES-256-GCM + Argon2id, not a zip — cannot be opened by any tool without password). `besure export --password` / `besure import --password`, vault-scoped REST endpoints, Dashboard Export/Import UI |
+| **V0.60** | ✅ Done | Recycle Bin: soft delete contexts/entries to trash, restore or permanently purge. `besure delete/restore/trash/purge`, Dashboard Trash view, all list/stats/query exclude deleted items |
+| **V0.61** | ✅ Done | Real semantic search: local fastembed + bge-small-zh-v1.5 (512-dim), fully offline/zero-cost/zero-key. `besure index`, auto-index on add, `search --semantic`, REST `?semantic=true`, Dashboard semantic toggle |
 | **V0.62** | ✅ Done | Removed MCP layer: agents integrate via CLI (exec `besure` commands) + SKILL.md iron rules. `besure mcp` command removed |
-| **Next** | 📋 Planned | Tauri desktop app, crates.io publish, GitHub Actions CI, Product Hunt launch |
+| **V0.63** | ✅ Done | Agent-driven tags: agents pass tags via `--tags` flag, removed OpenRouter LLM tagger — no external LLM needed |
+| **V0.64** | ✅ Done | macOS Desktop App (Tauri 2): onboarding flow, menu bar tray, multi-vault Dashboard |
+| **V0.65** | ✅ Done | Multi-vault auto-discovery: root vault + all subdirectory vaults discovered automatically |
+| **Next** | 📋 Planned | crates.io publish, GitHub Actions CI, Product Hunt launch |
 | **Future** | 📋 Planned | VS Code extension, browser extension, team collaboration |
 
 ---
