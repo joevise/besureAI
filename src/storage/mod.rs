@@ -4,7 +4,7 @@ pub mod models;
 
 pub use vault::Vault;
 pub use models::{Context, ContextStatus, Entry, EntryLink, EntryStatus, LinkRelation};
-pub use db::{QueryFilter, Stats};
+pub use db::{Database, QueryFilter, Stats};
 
 /// Check if current process has global vault access
 pub fn can_access_all_vaults() -> bool {

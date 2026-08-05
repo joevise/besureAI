@@ -87,6 +87,9 @@ besure index --all               # 给存量数据建向量索引
 | `besure tags` | 标签列表 |
 | `besure resolve <id>` | 标记完成 |
 | `besure append <id> "补充"` | 追加内容 |
+| `besure profile` | 查看当前项目 Profile（git/服务器/密码等） |
+| `besure profile set <key> <value>` | 设置项目信息 |
+| `besure profile delete <key>` | 删除项目信息 |
 | `besure link <id> --to <id> --as related_to` | 关联记忆 |
 | `besure delete entry <id>` | 删除（入回收站） |
 | `besure restore <id>` | 从回收站恢复 |
@@ -96,6 +99,11 @@ besure index --all               # 给存量数据建向量索引
 | `besure --version` | 版本号 |
 
 ## Tag 规则（重要）
+
+### 创建新 Context 时：
+1. `besure create "项目名"` 创建 context
+2. 立即 `besure profile set git_repo <url>` 填写项目基础信息
+3. `besure switch "项目名"` 切换到新 context
 
 调用 `besure add` 时，**必须自己生成 tags 传进来**（你本身就是大模型，不需要额外调 API）：
 

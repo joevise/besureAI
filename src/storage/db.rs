@@ -48,7 +48,8 @@ impl Database {
                 next_steps  TEXT NOT NULL DEFAULT '[]',
                 related     TEXT NOT NULL DEFAULT '[]',
                 shareable   INTEGER NOT NULL DEFAULT 0,
-                deleted     INTEGER NOT NULL DEFAULT 0
+                deleted     INTEGER NOT NULL DEFAULT 0,
+                profile     TEXT NOT NULL DEFAULT '{}'
             );
 
             CREATE TABLE IF NOT EXISTS entries (
@@ -94,6 +95,7 @@ impl Database {
             ("entries", "resolved", "BOOLEAN NOT NULL DEFAULT 0"),
             ("entries", "deleted", "INTEGER NOT NULL DEFAULT 0"),
             ("contexts", "deleted", "INTEGER NOT NULL DEFAULT 0"),
+            ("contexts", "profile", "TEXT NOT NULL DEFAULT '{}'"),
         ];
 
         for (table, col, def) in columns {
@@ -122,8 +124,8 @@ impl Database {
     pub fn upsert_context(&self, ctx: &Context) -> Result<()> {
         self.conn.execute(
             r#"INSERT OR REPLACE INTO contexts
-               (id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#,
+               (id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable, profile)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
             params![
                 ctx.id,
                 ctx.title,
@@ -136,6 +138,7 @@ impl Database {
                 serde_json::to_string(&ctx.next_steps)?,
                 serde_json::to_string(&ctx.related)?,
                 ctx.shareable as i32,
+                serde_json::to_string(&ctx.profile)?,
             ],
         )?;
         Ok(())
@@ -144,7 +147,7 @@ impl Database {
     /// Get context by id
     pub fn get_context(&self, id: &str) -> Result<Option<Context>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE id = ?1",
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable, profile FROM contexts WHERE id = ?1",
         )?;
 
         let mut rows = stmt.query(params![id])?;
@@ -158,7 +161,7 @@ impl Database {
     /// List all contexts
     pub fn list_contexts(&self) -> Result<Vec<Context>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE deleted = 0 ORDER BY updated DESC",
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable, profile FROM contexts WHERE deleted = 0 ORDER BY updated DESC",
         )?;
 
         let contexts = stmt
@@ -172,7 +175,7 @@ impl Database {
     /// Filter contexts by status
     pub fn list_contexts_by_status(&self, status: &ContextStatus) -> Result<Vec<Context>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE status = ?1 AND deleted = 0 ORDER BY updated DESC",
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable, profile FROM contexts WHERE status = ?1 AND deleted = 0 ORDER BY updated DESC",
         )?;
 
         let contexts = stmt
@@ -187,7 +190,7 @@ impl Database {
     pub fn find_contexts_fuzzy(&self, query: &str) -> Result<Vec<Context>> {
         let pattern = format!("%{}%", query);
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE (id LIKE ?1 OR title LIKE ?1) AND deleted = 0 ORDER BY updated DESC",
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable, profile FROM contexts WHERE (id LIKE ?1 OR title LIKE ?1) AND deleted = 0 ORDER BY updated DESC",
         )?;
 
         let contexts = stmt
@@ -214,6 +217,45 @@ impl Database {
         self.conn.execute(
             "UPDATE contexts SET updated = ?1 WHERE id = ?2",
             params![now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Get a context's profile (JSON object, {} if unset)
+    pub fn get_profile(&self, context_id: &str) -> Result<serde_json::Value> {
+        let profile_str: String = self.conn.query_row(
+            "SELECT profile FROM contexts WHERE id = ?1",
+            params![context_id],
+            |row| row.get(0),
+        )?;
+        Ok(serde_json::from_str(&profile_str).unwrap_or_else(|_| serde_json::json!({})))
+    }
+
+    /// Set a single profile key
+    pub fn set_profile_key(&self, context_id: &str, key: &str, value: serde_json::Value) -> Result<()> {
+        let mut profile = self.get_profile(context_id)?;
+        if !profile.is_object() {
+            profile = serde_json::json!({});
+        }
+        profile[key] = value;
+        self.update_profile(context_id, &profile)
+    }
+
+    /// Delete a single profile key
+    pub fn delete_profile_key(&self, context_id: &str, key: &str) -> Result<()> {
+        let mut profile = self.get_profile(context_id)?;
+        if let Some(obj) = profile.as_object_mut() {
+            obj.remove(key);
+        }
+        self.update_profile(context_id, &profile)
+    }
+
+    /// Replace the entire profile
+    pub fn update_profile(&self, context_id: &str, profile: &serde_json::Value) -> Result<()> {
+        let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        self.conn.execute(
+            "UPDATE contexts SET profile = ?1, updated = ?2 WHERE id = ?3",
+            params![serde_json::to_string(profile)?, now, context_id],
         )?;
         Ok(())
     }
@@ -347,20 +389,20 @@ impl Database {
         let pattern = format!("%{}%", query);
         let mut stmt = self.conn.prepare(
             r#"SELECT c.id, c.title, c.status, c.created, c.updated, c.tags, c.summary,
-                      c.current_milestone, c.next_steps, c.related, c.shareable,
+                      c.current_milestone, c.next_steps, c.related, c.shareable, c.profile,
                       e.id, e.context_id, e.date, e.entry_type, e.content, e.tags,
                       e.links, e.valid_from, e.valid_until, e.status, e.superseded_by, e.resolved
                FROM entries e
                JOIN contexts c ON e.context_id = c.id
                WHERE (e.content LIKE ?1 OR c.title LIKE ?1 OR c.summary LIKE ?1)
                  AND e.deleted = 0 AND c.deleted = 0
-               ORDER BY e.date DESC"#,
+                 ORDER BY e.date DESC"#,
         )?;
 
         let results = stmt
             .query_map(params![pattern], |row| {
                 let ctx = Database::row_to_context_from_row(row, 0)?;
-                let entry = Database::row_to_entry_from_row(row, 11)?;
+                let entry = Database::row_to_entry_from_row(row, 12)?;
                 Ok((ctx, entry))
             })?
             .filter_map(|r| r.ok())
@@ -381,6 +423,7 @@ impl Database {
         let next_str: String = row.get(offset + 8)?;
         let related_str: String = row.get(offset + 9)?;
         let status_str: String = row.get(offset + 2)?;
+        let profile_str: String = row.get(offset + 11).unwrap_or_else(|_| "{}".to_string());
 
         Ok(Context {
             id: row.get(offset)?,
@@ -394,6 +437,7 @@ impl Database {
             next_steps: serde_json::from_str(&next_str).unwrap_or_default(),
             related: serde_json::from_str(&related_str).unwrap_or_default(),
             shareable: row.get(offset + 10)?,
+            profile: serde_json::from_str(&profile_str).unwrap_or_else(|_| serde_json::json!({})),
         })
     }
 
@@ -779,7 +823,7 @@ impl Database {
     /// List all trashed (deleted=1) contexts and entries
     pub fn list_trash(&self) -> Result<(Vec<Context>, Vec<Entry>)> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable FROM contexts WHERE deleted = 1 ORDER BY updated DESC",
+            "SELECT id, title, status, created, updated, tags, summary, current_milestone, next_steps, related, shareable, profile FROM contexts WHERE deleted = 1 ORDER BY updated DESC",
         )?;
         let contexts = stmt
             .query_map([], |row| self.row_to_context(row))?
@@ -1304,5 +1348,38 @@ mod tests {
         let (ctxs, entries) = db.list_trash().unwrap();
         assert!(ctxs.is_empty() && entries.is_empty());
         assert_eq!(db.count_entries().unwrap(), 0);
+    }
+
+    #[test]
+    fn test_profile_crud() {
+        let db = Database::open_memory().unwrap();
+        let ctx = Context::from_title("Profile Test");
+        db.upsert_context(&ctx).unwrap();
+
+        // Default profile is {}
+        let p = db.get_profile(&ctx.id).unwrap();
+        assert_eq!(p, serde_json::json!({}));
+
+        // Set keys
+        db.set_profile_key(&ctx.id, "git_repo", serde_json::json!("https://github.com/joevise/besureAI")).unwrap();
+        db.set_profile_key(&ctx.id, "server", serde_json::json!("1.2.3.4:7789")).unwrap();
+        let p = db.get_profile(&ctx.id).unwrap();
+        assert_eq!(p["git_repo"], "https://github.com/joevise/besureAI");
+        assert_eq!(p["server"], "1.2.3.4:7789");
+
+        // get_context includes profile
+        let loaded = db.get_context(&ctx.id).unwrap().unwrap();
+        assert_eq!(loaded.profile["git_repo"], "https://github.com/joevise/besureAI");
+
+        // Delete key
+        db.delete_profile_key(&ctx.id, "server").unwrap();
+        let p = db.get_profile(&ctx.id).unwrap();
+        assert!(p.get("server").is_none());
+        assert_eq!(p["git_repo"], "https://github.com/joevise/besureAI");
+
+        // Full replace
+        db.update_profile(&ctx.id, &serde_json::json!({"version": "0.66.0"})).unwrap();
+        let p = db.get_profile(&ctx.id).unwrap();
+        assert_eq!(p, serde_json::json!({"version": "0.66.0"}));
     }
 }

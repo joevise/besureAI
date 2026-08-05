@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "besure",
     about = "貔貅记忆 Besure AI — Context Switch Memory System",
-    version = "0.65.0",
+    version = "0.66.0",
     long_about = "本地优先多上下文记忆系统 — 只进不出，记忆永存。"
 )]
 struct Cli {
@@ -318,6 +318,16 @@ enum Commands {
         action: ServiceAction,
     },
 
+    /// View/edit context profile (project info card: git/server/credentials/tech stack)
+    #[command(name = "profile")]
+    Profile {
+        #[command(subcommand)]
+        action: Option<ProfileAction>,
+        /// Target context (default: current context)
+        #[arg(long = "context", global = true)]
+        context: Option<String>,
+    },
+
     /// Setup vault + inject mandatory recording rules into Agent config files
     #[command(name = "setup")]
     Setup {
@@ -333,6 +343,23 @@ enum Commands {
         /// Path to scan for Agent config files (default: current dir)
         #[arg(long)]
         workspace: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProfileAction {
+    /// Set a single profile key (e.g. besure profile set git_repo https://...)
+    Set {
+        key: String,
+        value: String,
+    },
+    /// Delete a profile key
+    Delete {
+        key: String,
+    },
+    /// Import entire profile from a JSON file (replaces existing)
+    Import {
+        file: String,
     },
 }
 
@@ -450,6 +477,20 @@ fn main() -> anyhow::Result<()> {
                 ServiceAction::Install => cli::commands::cmd_service_install(),
                 ServiceAction::Uninstall => cli::commands::cmd_service_uninstall(),
                 ServiceAction::Status => cli::commands::cmd_service_status(),
+            }
+        }
+        Commands::Profile { action, context } => {
+            match action {
+                None => cli::commands::cmd_profile_show(context.as_deref()),
+                Some(ProfileAction::Set { key, value }) => {
+                    cli::commands::cmd_profile_set(&key, &value, context.as_deref())
+                }
+                Some(ProfileAction::Delete { key }) => {
+                    cli::commands::cmd_profile_delete(&key, context.as_deref())
+                }
+                Some(ProfileAction::Import { file }) => {
+                    cli::commands::cmd_profile_import(&file, context.as_deref())
+                }
             }
         }
         Commands::Setup { agent_name, agent_type, encrypt, workspace } => {

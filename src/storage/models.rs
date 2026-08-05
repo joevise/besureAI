@@ -236,6 +236,9 @@ pub struct Context {
     pub next_steps: Vec<String>,
     pub related: Vec<String>,
     pub shareable: bool,
+    /// Project profile card (git repo, server, credentials, tech stack, etc.)
+    #[serde(default)]
+    pub profile: serde_json::Value,
 }
 
 impl Context {
@@ -255,6 +258,7 @@ impl Context {
             next_steps: Vec::new(),
             related: Vec::new(),
             shareable: false,
+            profile: serde_json::json!({}),
         }
     }
 

@@ -125,6 +125,7 @@ impl ApiServer {
             .route("/api/vaults", get(list_all_vaults))
             .route("/api/vaults/:id/contexts", get(get_vault_contexts))
             .route("/api/vaults/:id/contexts/:ctxId/stats", get(get_context_stats_handler))
+            .route("/api/vaults/:id/contexts/:ctxId/profile", get(get_profile_handler).put(put_profile_handler).patch(patch_profile_handler))
             .route("/api/vaults/:id/log", get(get_vault_log))
             .route("/api/vaults/:id/stats", get(get_vault_stats))
             .route("/api/vaults/:id/unlock", post(unlock_vault))
@@ -811,6 +812,60 @@ async fn get_context_stats_handler(
     let db = vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let stats = db.get_context_stats(&context_id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ApiResponse { ok: true, data: Some(stats), error: None }))
+}
+
+// === Profile handlers ===
+
+fn open_vault_db(vault_id: &str) -> Result<crate::storage::Database, (StatusCode, String)> {
+    let parent = crate::storage::Vault::vault_parent();
+    let vault_path = parent.join(vault_id);
+    if !vault_path.exists() {
+        return Err((StatusCode::NOT_FOUND, format!("vault '{}' not found", vault_id)));
+    }
+    let vault = Vault::open(Some(vault_path)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    vault.database().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+/// GET /api/vaults/:id/contexts/:ctxId/profile
+async fn get_profile_handler(
+    State(_state): State<Arc<AppState>>,
+    axum::extract::Path((vault_id, context_id)): axum::extract::Path<(String, String)>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, String)> {
+    let db = open_vault_db(&vault_id)?;
+    let profile = db.get_profile(&context_id).map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(profile), error: None }))
+}
+
+/// PUT /api/vaults/:id/contexts/:ctxId/profile — full replace with JSON object body
+async fn put_profile_handler(
+    State(_state): State<Arc<AppState>>,
+    axum::extract::Path((vault_id, context_id)): axum::extract::Path<(String, String)>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, String)> {
+    if !body.is_object() {
+        return Err((StatusCode::BAD_REQUEST, "profile must be a JSON object".to_string()));
+    }
+    let db = open_vault_db(&vault_id)?;
+    db.update_profile(&context_id, &body).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(body), error: None }))
+}
+
+#[derive(Deserialize)]
+struct ProfilePatchBody {
+    key: String,
+    value: serde_json::Value,
+}
+
+/// PATCH /api/vaults/:id/contexts/:ctxId/profile — single key update {key, value}
+async fn patch_profile_handler(
+    State(_state): State<Arc<AppState>>,
+    axum::extract::Path((vault_id, context_id)): axum::extract::Path<(String, String)>,
+    Json(body): Json<ProfilePatchBody>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, String)> {
+    let db = open_vault_db(&vault_id)?;
+    db.set_profile_key(&context_id, &body.key, body.value).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let profile = db.get_profile(&context_id).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ApiResponse { ok: true, data: Some(profile), error: None }))
 }
 
 async fn list_tags(

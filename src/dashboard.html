@@ -228,6 +228,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 
 /* === Detail === */
 .detail-header{
+
   padding:20px 24px 16px;border-bottom:1px solid var(--border);
   display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
 }
@@ -237,6 +238,25 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   font-family:var(--mono);font-size:11px;
   background:var(--surface2);padding:2px 8px;border-radius:6px;color:var(--text3);
 }
+
+/* === Profile Card === */
+.profile-card{
+  margin:12px 24px 0;padding:12px 16px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  flex-shrink:0;
+}
+.profile-card .pc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.profile-card .pc-title{font-size:13px;font-weight:600;color:var(--text2)}
+.profile-card .pc-row{display:flex;gap:10px;font-size:13px;padding:3px 0;align-items:baseline}
+.profile-card .pc-key{font-family:var(--mono);font-size:12px;color:var(--text3);min-width:120px;flex-shrink:0}
+.profile-card .pc-val{color:var(--text);word-break:break-all}
+.profile-card .pc-val.masked{cursor:pointer;color:var(--text3);font-family:var(--mono)}
+.profile-card .pc-val a{color:var(--accent);text-decoration:none}
+.profile-empty{padding:12px 24px 0;flex-shrink:0}
+.profile-row-edit{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+.profile-row-edit input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px}
+.profile-row-edit input.pkey{width:140px;font-family:var(--mono)}
+.profile-row-edit input.pval{flex:1}
 
 /* === Timeline === */
 .timeline{flex:1;overflow-y:auto;padding:20px 24px 80px}
@@ -392,7 +412,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>🐉 Besure AI Context <span class="ver">v0.65.0</span></h1>
+      <h1>🐉 Besure AI Context <span class="ver">v0.66.0</span></h1>
     </div>
     <div class="sidebar-stats">
       <span>📋 <b id="ctxCount">0</b> contexts</span>
@@ -518,6 +538,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
     </div>
     <div class="modal-field"><label>Content</label><textarea id="entryContent" rows="3" placeholder="What you did / decided / found"></textarea></div>
     <div class="modal-actions"><button class="btn" onclick="hideModal('entryModal')">Cancel</button><button class="btn btn-primary" onclick="doAddEntry()">Add</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="profileModal">
+  <div class="modal" style="width:520px">
+    <h3>📋 Context Profile</h3>
+    <div id="profileRows" style="max-height:50vh;overflow-y:auto"></div>
+    <div style="margin-top:8px"><button class="btn btn-sm" onclick="addProfileRow('','')">+ Add key</button></div>
+    <div class="modal-actions"><button class="btn" onclick="hideModal('profileModal')">Cancel</button><button class="btn btn-primary" onclick="doSaveProfile()">Save</button></div>
   </div>
 </div>
 
@@ -944,6 +973,33 @@ function renderDetail(ctx,entries){
     contentHtml=`${filterHtml}<div class="timeline" style="flex:1;overflow-y:auto">${entriesHtml}</div>`;
   }
 
+  // Profile card (project info: git/server/credentials/tech stack)
+  const profile=(ctx.profile&&typeof ctx.profile==='object'&&!Array.isArray(ctx.profile))?ctx.profile:{};
+  window._profileData=profile;
+  const pkeys=Object.keys(profile).sort();
+  let profileHtml;
+  if(pkeys.length){
+    const rows=pkeys.map(k=>{
+      const v=profile[k];
+      const vStr=typeof v==='string'?v:JSON.stringify(v);
+      let valHtml;
+      if(isSensitiveKey(k)){
+        valHtml=`<span class="pc-val masked" data-k="${esc(k)}" data-revealed="0" onclick="toggleProfileVal(this)" title="点击展开">***</span>`;
+      }else if(typeof v==='string'&&/^https?:\/\//.test(v)){
+        valHtml=`<span class="pc-val"><a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a></span>`;
+      }else{
+        valHtml=`<span class="pc-val">${esc(vStr)}</span>`;
+      }
+      return `<div class="pc-row"><span class="pc-key">${esc(k)}</span>${valHtml}</div>`;
+    }).join('');
+    profileHtml=`<div class="profile-card">
+      <div class="pc-head"><span class="pc-title">📋 Profile</span><button class="btn btn-sm" style="padding:2px 8px;font-size:11px" onclick="showProfileModal()">Edit</button></div>
+      ${rows}
+    </div>`;
+  }else{
+    profileHtml=`<div class="profile-empty"><button class="btn btn-sm" onclick="showProfileModal()">📋 添加项目信息</button></div>`;
+  }
+
   main.innerHTML=`
     <div class="detail-header">
       <div>
@@ -961,6 +1017,7 @@ function renderDetail(ctx,entries){
         <button class="btn btn-sm" onclick="deleteContext('${ctx.id}')">🗑 Delete</button>
       </div>
     </div>
+    ${profileHtml}
     ${tabsHtml}
     ${contentHtml}
   `;
@@ -1245,6 +1302,57 @@ function copySkillContent(){
   navigator.clipboard.writeText(inst);
 }
 function showEntryModal(){if(!currentCtx){alert('Select a context first');return}showModal('entryModal')}
+
+// === Profile card ===
+function isSensitiveKey(k){return /password|passwd|pwd|token|secret|key/i.test(k)}
+function toggleProfileVal(el){
+  const k=el.getAttribute('data-k');
+  const v=(window._profileData||{})[k];
+  const vStr=typeof v==='string'?v:JSON.stringify(v);
+  if(el.getAttribute('data-revealed')==='1'){
+    el.textContent='***';el.setAttribute('data-revealed','0');el.classList.add('masked');
+  }else{
+    el.textContent=vStr;el.setAttribute('data-revealed','1');el.classList.remove('masked');
+  }
+}
+function showProfileModal(){
+  if(!currentCtx){alert('Select a context first');return}
+  const rows=document.getElementById('profileRows');
+  rows.innerHTML='';
+  const profile=window._profileData||{};
+  const keys=Object.keys(profile).sort();
+  if(keys.length){keys.forEach(k=>addProfileRow(k,typeof profile[k]==='string'?profile[k]:JSON.stringify(profile[k])))}
+  else{addProfileRow('','')}
+  showModal('profileModal');
+}
+function addProfileRow(k,v){
+  const rows=document.getElementById('profileRows');
+  const div=document.createElement('div');
+  div.className='profile-row-edit';
+  div.innerHTML=`<input class="pkey" placeholder="key" value="${esc(k)}"><input class="pval" placeholder="value" value="${esc(v)}"><button class="btn btn-sm" style="padding:2px 6px;color:var(--text3)" onclick="this.parentElement.remove()">✕</button>`;
+  rows.appendChild(div);
+}
+async function doSaveProfile(){
+  if(!currentCtx)return;
+  const rows=document.querySelectorAll('#profileRows .profile-row-edit');
+  const profile={};
+  rows.forEach(r=>{
+    const k=r.querySelector('.pkey').value.trim();
+    if(!k)return;
+    const v=r.querySelector('.pval').value;
+    // Keep numbers/booleans/JSON as native types, otherwise string
+    try{const parsed=JSON.parse(v);profile[k]=(typeof parsed==='object'&&parsed!==null)||typeof parsed==='number'||typeof parsed==='boolean'?parsed:v}
+    catch(e){profile[k]=v}
+  });
+  try{
+    await api(`/api/vaults/${currentVault.id}/contexts/${currentCtx.id}/profile`,{method:'PUT',body:JSON.stringify(profile)});
+    currentCtx.profile=profile;
+    const idx=contexts.findIndex(c=>c.id===currentCtx.id);
+    if(idx>=0)contexts[idx].profile=profile;
+    hideModal('profileModal');
+    renderDetail(currentCtx,currentEntries);
+  }catch(e){alert('Save failed: '+e.message)}
+}
 function showModal(id){document.getElementById(id).classList.add('show')}
 function hideModal(id){document.getElementById(id).classList.remove('show')}
 

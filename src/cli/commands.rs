@@ -1906,3 +1906,89 @@ fn inject_rules(path: &std::path::Path, agent_name: Option<&str>) -> Result<()> 
     Ok(())
 }
 
+// === profile ===
+
+/// Resolve target context id: explicit --context (exact or fuzzy), else current context
+fn resolve_profile_context(vault: &Vault, context: Option<&str>) -> Result<String> {
+    let db = vault.database()?;
+    if let Some(query) = context {
+        if let Some(ctx) = db.get_context(query)? {
+            return Ok(ctx.id);
+        }
+        let found = db.find_contexts_fuzzy(query)?;
+        match found.len() {
+            0 => bail!("No context found matching '{}'", query),
+            1 => Ok(found[0].id.clone()),
+            _ => bail!("Multiple contexts match '{}'. Be more specific.", query),
+        }
+    } else {
+        vault.current_context.clone().context("No active context. Use --context or 'besure switch'.")
+    }
+}
+
+pub fn cmd_profile_show(context: Option<&str>) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let ctx_id = resolve_profile_context(&vault, context)?;
+    let db = vault.database()?;
+    let ctx = db.get_context(&ctx_id)?.context("Context not found")?;
+    let profile = db.get_profile(&ctx_id)?;
+
+    println!("Profile — {} ({})\n", ctx.title, ctx.id);
+    if let Some(obj) = profile.as_object() {
+        if obj.is_empty() {
+            println!("  (empty — use 'besure profile set <key> <value>' to add)");
+        } else {
+            let mut keys: Vec<&String> = obj.keys().collect();
+            keys.sort();
+            let width = keys.iter().map(|k| k.len()).max().unwrap_or(0);
+            for k in keys {
+                let v = &obj[k];
+                let v_str = match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                println!("  {:<width$} = {}", k, v_str, width = width);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn cmd_profile_set(key: &str, value: &str, context: Option<&str>) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let ctx_id = resolve_profile_context(&vault, context)?;
+    let db = vault.database()?;
+    // Accept JSON values (numbers, bools, arrays) — fallback to plain string
+    let v = serde_json::from_str::<serde_json::Value>(value)
+        .unwrap_or_else(|_| serde_json::Value::String(value.to_string()));
+    db.set_profile_key(&ctx_id, key, v)?;
+    println!("✓ {} → {} ({})", key, ctx_id, truncate(value, 60));
+    Ok(())
+}
+
+pub fn cmd_profile_delete(key: &str, context: Option<&str>) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let ctx_id = resolve_profile_context(&vault, context)?;
+    let db = vault.database()?;
+    db.delete_profile_key(&ctx_id, key)?;
+    println!("✓ Deleted profile key '{}' ({})", key, ctx_id);
+    Ok(())
+}
+
+pub fn cmd_profile_import(file: &str, context: Option<&str>) -> Result<()> {
+    let vault = get_unlocked_vault()?;
+    let ctx_id = resolve_profile_context(&vault, context)?;
+    let content = std::fs::read_to_string(file)
+        .with_context(|| format!("failed to read {}", file))?;
+    let profile: serde_json::Value = serde_json::from_str(&content)
+        .with_context(|| format!("invalid JSON in {}", file))?;
+    if !profile.is_object() {
+        bail!("Profile JSON must be an object (key-value pairs)");
+    }
+    let db = vault.database()?;
+    db.update_profile(&ctx_id, &profile)?;
+    let count = profile.as_object().map(|o| o.len()).unwrap_or(0);
+    println!("✓ Imported {} profile keys into {}", count, ctx_id);
+    Ok(())
+}
+

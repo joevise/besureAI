@@ -8,7 +8,7 @@
 
 **Rust 引擎 · 本地部署 · 端到端加密 · CLI 原生 · 单二进制**
 
-**当前版本：0.65.0** — 真语义搜索：本地 fastembed（bge-small-zh-v1.5，512 维）完全离线运行——零 API 成本、零 key、隐私安全。`besure index` 建向量索引，`besure add` 自动增量索引。
+**当前版本：0.66.0** — 真语义搜索：本地 fastembed（bge-small-zh-v1.5，512 维）完全离线运行——零 API 成本、零 key、隐私安全。`besure index` 建向量索引，`besure add` 自动增量索引。
 
 [English](README.md) | 中文
 
